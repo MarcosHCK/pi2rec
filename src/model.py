@@ -14,26 +14,75 @@
 # You should have received a copy of the GNU General Public License
 # along with pi2rec. If not, see <http://www.gnu.org/licenses/>.
 #
+from PIL import Image
+import io
 import keras
-import numpy
+import math
+import random
 import subprocess, tempfile
 import tensorflow as tf
 
-pic_width = 4096
-pic_height = 4096
+pic_width = 64
+pic_height = 64
+a_cone = math.pi / 8
+ideal_x_for = 488.0
+ideal_y_for = 406.0
+ideal_x_size = 333.0
+ideal_y_size = 87.0
+
+def normal (n_min : float, n_max : float) -> float:
+
+  u1 = random.random ()
+  u2 = random.random ()
+
+  z = math.sqrt (-2.0 * math.log (u1)) * math.cos (2.0 * math.pi * u2)
+
+  mean = (n_min + n_max) / 2.0
+  dev = (n_min - n_max) / (2.0 * 1.645)
+
+  return z * dev + mean
+
+def ellipse (zeta : float, a : float, b : float) -> float:
+
+  zsin = math.sin (zeta)
+  zcos = math.cos (zeta)
+
+  asin = (a * a) * (zsin * zsin)
+  bcos = (b * b) * (zcos * zcos)
+  root = math.sqrt (asin + bcos)
+
+  return (a * b) / root
+
+def blender (inputs):
+
+  data = inputs.numpy ()
+  source = Image.open ('mask.png')
+  canvas = Image.open (io.BytesIO (data))
+
+  source_width = (int) (canvas.width * (ideal_x_size / ideal_x_for))
+  source_height = (int) (canvas.height * (ideal_y_size / ideal_y_for))
+  source = source.resize ((source_width, source_height))
+
+  zeta = random.random () * math.pi * 2
+  rho = normal (0, ellipse (zeta, source_width, source_height))
+  angle = normal (zeta - a_cone, zeta + a_cone) - (math.pi / 2)
+
+  source_xpos = (int) ((rho * math.cos (zeta)) + (source_width / 2))
+  source_ypos = (int) ((rho * math.sin (zeta)) + (source_height / 2))
+
+  source = source.rotate ((angle * -360.0) / (math.pi * 2), expand = True)
+
+  canvas.paste (source, (source_xpos, source_ypos), source)
+
+  output = io.BytesIO (data)
+  canvas.save (output, format = 'PNG')
+  return output.getvalue ()
 
 def blend (inputs):
 
   image = tf.io.read_file (inputs)
 
-  def run_blender (inputs):
-
-    command = '../blender/builddir/blender'
-    process = subprocess.Popen ([command, '-', '-'], stdin = subprocess.PIPE, stdout = subprocess.PIPE)
-    outputs, _ = process.communicate (inputs.numpy ())
-    return outputs
-
-  image = tf.py_function (run_blender, [image], tf.string)
+  image = tf.py_function (blender, [image], tf.string)
   image = tf.image.decode_png (image, channels = 3)
   image = tf.image.resize (image, [pic_width, pic_height])
   image = tf.image.convert_image_dtype (image, tf.float32)
