@@ -14,21 +14,26 @@
 # You should have received a copy of the GNU General Public License
 # along with pi2rec. If not, see <http://www.gnu.org/licenses/>.
 #
+from common import loss_ssim
+from common import metric_psnr, metric_ssim
+from common import pic_height, pic_width
 from PIL import Image
-import io
-import keras
-import math
-import random
-import subprocess, tempfile
+import io, keras, math, os, random, subprocess, tempfile
 import tensorflow as tf
 
-pic_width = 64
-pic_height = 64
 a_cone = math.pi / 8
 ideal_x_for = 488.0
 ideal_y_for = 406.0
 ideal_x_size = 333.0
 ideal_y_size = 87.0
+
+def ellipse (zeta : float, a : float, b : float) -> float:
+
+  asin = (a ** 2) * (math.sin (zeta) ** 2)
+  bcos = (b ** 2) * (math.cos (zeta) ** 2)
+  root = math.sqrt (asin + bcos)
+
+  return (a * b) / root
 
 def normal (n_min : float, n_max : float) -> float:
 
@@ -41,17 +46,6 @@ def normal (n_min : float, n_max : float) -> float:
   dev = (n_min - n_max) / (2.0 * 1.645)
 
   return z * dev + mean
-
-def ellipse (zeta : float, a : float, b : float) -> float:
-
-  zsin = math.sin (zeta)
-  zcos = math.cos (zeta)
-
-  asin = (a * a) * (zsin * zsin)
-  bcos = (b * b) * (zcos * zcos)
-  root = math.sqrt (asin + bcos)
-
-  return (a * b) / root
 
 def blender (inputs):
 
@@ -74,37 +68,33 @@ def blender (inputs):
 
   canvas.paste (source, (source_xpos, source_ypos), source)
 
-  output = io.BytesIO (data)
-  canvas.save (output, format = 'PNG')
+  output = io.BytesIO ()
+  canvas.save (output, format = 'JPEG')
   return output.getvalue ()
 
 def blend (inputs):
 
   image = tf.io.read_file (inputs)
-
   image = tf.py_function (blender, [image], tf.string)
-  image = tf.image.decode_png (image, channels = 3)
-  image = tf.image.resize (image, [pic_width, pic_height])
+  image = tf.image.decode_jpeg (image, channels = 3)
   image = tf.image.convert_image_dtype (image, tf.float32)
+  image = tf.image.resize (image, [pic_width, pic_height])
   return image
 
 def load (inputs):
 
   image = tf.io.read_file (inputs)
   image = tf.image.decode_jpeg (image, channels = 3)
-  image = tf.image.resize (image, [pic_width, pic_height])
   image = tf.image.convert_image_dtype (image, tf.float32)
+  image = tf.image.resize (image, [pic_width, pic_height])
   return image
 
-def prepare ():
+def prepare (root):
 
-  dataset = tf.data.Dataset.list_files ('../dataset2/*.JPG')
-  dataset = dataset.map (blend, num_parallel_calls = tf.data.AUTOTUNE)
-  dataset = dataset.batch (32)
-  target = tf.data.Dataset.list_files ('../dataset2/*.JPG')
-  target = target.map (load, num_parallel_calls = tf.data.AUTOTUNE)
-  target = target.batch (32)
-  return tf.data.Dataset.zip ((dataset, target))
+  images = tf.data.Dataset.list_files (os.path.join ('../dataset2', '*.JPG'))
+  images = images.map (lambda x: (x, x), num_parallel_calls = tf.data.AUTOTUNE)
+  images = images.map (lambda x1, x2: (blend (x1), load (x2)), num_parallel_calls = tf.data.AUTOTUNE)
+  return images
 
 def train (dataset):
 
@@ -113,24 +103,23 @@ def train (dataset):
   if pic_height % 4 != 0:
     raise ValueError ("pic_width is not a power of 4")
 
-  quarter_width = (int) (pic_width / 4)
-  quarter_height = (int) (pic_height / 4)
+  loss = keras.losses.cosine_similarity
+  metrics = [ keras.metrics.MeanSquaredError (), metric_psnr, metric_ssim ]
 
   model = keras.models.Sequential ()
-  model.add (keras.layers.Conv2D (32, (3, 3), activation = 'relu', input_shape = (pic_width, pic_height, 3)))
+  model.add (keras.layers.Conv2D (16, (3, 3), activation = 'relu', padding = 'same'))
   model.add (keras.layers.MaxPooling2D ((2, 2)))
-  model.add (keras.layers.Conv2D (64, (3, 3), activation = 'relu'))
+  model.add (keras.layers.Conv2D (32, (3, 3), activation = 'relu', padding = 'same'))
   model.add (keras.layers.MaxPooling2D ((2, 2)))
-  model.add (keras.layers.Flatten ())
-  model.add (keras.layers.Dense (64, activation = 'relu'))
-  model.add (keras.layers.Dense (quarter_width * quarter_height * 128, activation = 'relu'))
-  model.add (keras.layers.Reshape ((quarter_width, quarter_height, 128)))
-  model.add (keras.layers.Conv2DTranspose (3, (3, 3), strides = (4, 4), activation = 'sigmoid', padding = 'same'))
+  model.add (keras.layers.BatchNormalization ())
+  model.add (keras.layers.Conv2DTranspose (32, (3, 3), strides = (2, 2), padding = 'same'))
+  model.add (keras.layers.Conv2DTranspose (3, (3, 3), strides = (2, 2), padding = 'same',
+    activation = 'tanh'))
 
-  model.compile (optimizer = 'adam', loss = 'binary_crossentropy', metrics = ['accuracy'])
-  model.fit (dataset, steps_per_epoch = len (dataset), epochs = 10)
+  model.compile (loss = loss, metrics = metrics, optimizer = 'adam')
+  model.fit (dataset, epochs = 10, steps_per_epoch = len (dataset))
   return model
 
-dataset = prepare ()
-model = train (dataset)
-model.save_weights ('pi2rec.h5')
+dataset = prepare ('../dataset3')
+model = train (dataset.batch (8))
+model.save ('pi2rec.keras')
