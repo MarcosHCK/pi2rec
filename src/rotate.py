@@ -14,7 +14,34 @@
 # You should have received a copy of the GNU General Public License
 # along with pi2rec. If not, see <http://www.gnu.org/licenses/>.
 #
+from PIL import Image
+import io, math
 import tensorflow as tf
 
+#
+# This is a dirty trick but sincerely I didn't find out how to do
+# an image rotation at arbitrary angles with tensorflow operators
+# without implementing it on a lower level
+#
+
+def rota (image, angle):
+
+  image = image.numpy ()
+  angle = (angle * -360.0) * (2 * math.pi)
+  stream = io.BytesIO (image)
+
+  image = Image.open (stream)
+  image = image.rotate (angle, expand = True)
+
+  stream = io.BytesIO ()
+  image.save (stream, format = 'PNG')
+  return stream.getvalue ()
+
 def rotate (image, angle):
+
+  image = tf.image.convert_image_dtype (image, tf.uint8)
+  image = tf.image.encode_png (image)
+  image = tf.py_function (rota, [image, angle], tf.string)
+  image = tf.image.decode_png (image, channels = 4)
+  image = tf.image.convert_image_dtype (image, tf.float32)
   return image

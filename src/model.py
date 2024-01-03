@@ -24,7 +24,7 @@ import argparse, io, keras, math, numpy, os, random
 import tensorflow as tf
 
 a_cone = math.pi / 8
-batches = 6
+batches = 32
 ideal_x_for = 488.0
 ideal_y_for = 406.0
 ideal_x_size = 333.0
@@ -55,25 +55,31 @@ def blend (inputs, mask):
   ideal_y_ratio = tf.constant (ideal_y_size / ideal_y_for)
   pi_2 = tf.constant (math.pi / 2)
 
-  canvas = tf.io.read_file (inputs)
-  canvas = tf.image.decode_jpeg (canvas, channels = 3)
-  canvas = tf.image.convert_image_dtype (canvas, tf.float32)
-  canvas = tf.image.resize (canvas, [ pic_width, pic_height ])
-
+  canvas = load (inputs)
   canvas_width = tf.cast (tf.shape (canvas) [0], dtype = tf.float32)
   canvas_height = tf.cast (tf.shape (canvas) [1], dtype = tf.float32)
   mask_width = tf.cast (tf.shape (mask) [0], dtype = tf.float32)
   mask_height = tf.cast (tf.shape (mask) [1], dtype = tf.float32)
 
   zeta = uniform (0, tf.constant (2 * math.pi))
-  rho = normal (0, ellipse (zeta, mask_width, mask_height))
+  rho = normal (0, ellipse (zeta, canvas_width, canvas_height))
   angle = normal (zeta - angle_cone, zeta + angle_cone) - pi_2
 
   mask_x = (rho * tf.cos (zeta)) + (mask_width / 2)
   mask_y = (rho * tf.sin (zeta)) + (mask_height / 2)
-  mask = rotate (mask, angle)
 
-  return paste (canvas, mask, tf.cast (mask_x, tf.int32), tf.cast (mask_y, tf.int32))
+  if mask_x > pic_width or mask_y > pic_height:
+
+    return canvas
+  else:
+
+    mask_x = tf.cast (mask_x, tf.int32)
+    mask_y = tf.cast (mask_y, tf.int32)
+
+    mask = rotate (mask, angle)
+    canvas = paste (canvas, mask, mask_x, mask_y)
+
+    return canvas
 
 def load (inputs):
 
@@ -83,7 +89,7 @@ def load (inputs):
   image = tf.image.resize (image, [ pic_width, pic_height ])
   return image
 
-def prepare (root, use_svg):
+def prepare (root, use_svg = False):
 
   mask_width = (int) (pic_width * (ideal_x_size / ideal_x_for))
   mask_height = (int) (pic_height * (ideal_y_size / ideal_y_for))
@@ -109,7 +115,7 @@ def prepare (root, use_svg):
   images = images.map (lambda x1, x2: (blend (x1, mask), load (x2)), num_parallel_calls = tf.data.AUTOTUNE)
   return images
 
-def train (dataset):
+def train (dataset, epochs = 10):
 
   if pic_width % 4 != 0:
     raise ValueError ("pic_width is not a power of 4")
@@ -120,17 +126,17 @@ def train (dataset):
   metrics = [ keras.metrics.MeanSquaredError (), metric_psnr, metric_ssim ]
 
   model = keras.models.Sequential ()
-  model.add (keras.layers.Conv2D (64, (3, 3), activation = 'relu', padding = 'same'))
+  model.add (keras.layers.Conv2D (16, (3, 3), activation = 'relu', padding = 'same'))
   model.add (keras.layers.MaxPooling2D ((2, 2)))
-  model.add (keras.layers.Conv2D (128, (3, 3), activation = 'relu', padding = 'same'))
+  model.add (keras.layers.Conv2D (32, (3, 3), activation = 'relu', padding = 'same'))
   model.add (keras.layers.MaxPooling2D ((2, 2)))
   model.add (keras.layers.BatchNormalization ())
-  model.add (keras.layers.Conv2DTranspose (128, (3, 3), strides = (2, 2), padding = 'same'))
+  model.add (keras.layers.Conv2DTranspose (32, (3, 3), strides = (2, 2), padding = 'same'))
   model.add (keras.layers.Conv2DTranspose (3, (3, 3), strides = (2, 2), padding = 'same',
-    activation = 'tanh'))
+    activation = keras.activations.tanh))
 
   model.compile (loss = loss, metrics = metrics, optimizer = 'adam')
-  model.fit (dataset, epochs = 10, steps_per_epoch = len (dataset))
+  model.fit (dataset, epochs = epochs, steps_per_epoch = len (dataset))
   return model
 
 def take_sample (dataset, size, directory):
@@ -152,10 +158,24 @@ def program ():
       help = 'dataset root',
       metavar = 'directory',
       type = str)
+  parser.add_argument ('--epochs',
+      help = 'epoch number to train in',
+      metavar  = 'N',
+      type = int)
+  parser.add_argument ('--output',
+      default = 'pi2rec.keras',
+      help = 'take dataset sample',
+      metavar  = 'directory',
+      type = str)
   parser.add_argument ('--sample',
       help = 'take dataset sample',
       metavar  = 'N',
       type = int)
+  parser.add_argument ('--sample-at',
+      default = 'dataset_sample',
+      help = 'take dataset sample',
+      metavar  = 'directory',
+      type = str)
   parser.add_argument ('--use-svg',
       action = 'store_true',
       help = 'use SVG masks (instead of PNG)')
@@ -165,9 +185,9 @@ def program ():
 
   if (args.sample != None):
     size = args.sample
-    take_sample (dataset, size, 'dataset_sample/')
+    take_sample (dataset, size, args.sample_at)
   else:
-    model = train (dataset.batch (batches))
-    model.save ('pi2rec.keras')
+    model = train (dataset.batch (batches), args.epochs)
+    model.save (args.output)
 
 program ()

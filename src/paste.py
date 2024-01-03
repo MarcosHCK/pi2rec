@@ -28,6 +28,11 @@ def paste (image, mask, x, y):
   x = tf.where (tf.less (x, 0), 0, x)
   y = tf.where (tf.less (y, 0), 0, y)
 
+  tf.assert_less (x, image_width,
+    message = 'paste position must be inside of image (or outside but just at the top-left sides)')
+  tf.assert_less (y, image_height,
+    message = 'paste position must be inside of image (or outside but just at the top-left sides)')
+
   bound_x = tf.maximum (0, tf.minimum (mask_width - off_x, image_width - x))
   bound_y = tf.maximum (0, tf.minimum (mask_height - off_y, image_height - y))
   mask = mask [off_x : off_x + bound_x, off_y : off_y + bound_y, :]

@@ -29,19 +29,22 @@ def process ():
   parser.add_argument ('--input',
       default = 'input.jpg',
       help = 'input image to process',
-      metavar = 'input',
-      required = False,
+      metavar = 'file',
+      type = str)
+  parser.add_argument ('--model',
+      default = 'pi2rec.keras',
+      help = 'input image to process',
+      metavar = 'file',
       type = str)
   parser.add_argument ('--output',
       default = 'output.jpg',
       help = 'where to output the result image',
-      metavar = 'output',
-      required = False,
+      metavar = 'file',
       type = str)
 
   args = parser.parse_args ()
 
-  model = keras.models.load_model ('pi2rec.keras')
+  model = keras.models.load_model (args.model)
   image = keras.preprocessing.image.load_img (args.input)
   image_width = image.width
   image_height = image.height
