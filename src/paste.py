@@ -23,29 +23,17 @@ def paste (image, mask, x, y):
   mask_width = tf.shape (mask) [0]
   mask_height = tf.shape (mask) [1]
 
-  def adjust_offs (x, y):
+  off_x = tf.where (tf.greater_equal (x, 0), 0, -x)
+  off_y = tf.where (tf.greater_equal (y, 0), 0, -y)
+  x = tf.where (tf.less (x, 0), 0, x)
+  y = tf.where (tf.less (y, 0), 0, y)
 
-    off_x = tf.where (tf.greater_equal (x, 0), 0, -x)
-    off_y = tf.where (tf.greater_equal (y, 0), 0, -y)
-    x = tf.where (tf.less (x, 0), 0, x)
-    y = tf.where (tf.less (y, 0), 0, y)
-    return (x, y, off_x, off_y)
+  bound_x = tf.maximum (0, tf.minimum (mask_width - off_x, image_width - x))
+  bound_y = tf.maximum (0, tf.minimum (mask_height - off_y, image_height - y))
+  mask = mask [off_x : off_x + bound_x, off_y : off_y + bound_y, :]
 
-  def dont_adjust_offs (x, y):
-    return (x, y, 0, 0)
-
-  x, y, off_x, off_y = tf.cond (tf.logical_or (tf.less (x, 0), tf.less (y, 0)),
-                                  lambda: adjust_offs (x, y),
-                                  lambda: dont_adjust_offs (x, y))
-
-  bound_x = x + (mask_width - off_x)
-  bound_y = y + (mask_height - off_y)
-  take_x = tf.where (tf.less (bound_x, image_width), mask_width, image_width - bound_x)
-  take_y = tf.where (tf.less (bound_y, image_height), mask_height, image_height - bound_y)
-  mask = mask [off_x : take_x, off_y : take_y, :]
-
-  pad_x = [x, image_width - (x + tf.shape (mask) [0])]
-  pad_y = [y, image_height - (y + tf.shape (mask) [1])]
+  pad_x = [x, image_width - (x + bound_x)]
+  pad_y = [y, image_height - (y + bound_y)]
   mask = tf.pad (mask, [ pad_x, pad_y, [0, 0] ], mode = 'CONSTANT')
   alpha = mask [:, :, 3:]
 
