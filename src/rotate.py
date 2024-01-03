@@ -14,7 +14,6 @@
 # You should have received a copy of the GNU General Public License
 # along with pi2rec. If not, see <http://www.gnu.org/licenses/>.
 #
-from PIL import Image
 import io, math
 import tensorflow as tf
 
@@ -23,6 +22,7 @@ import tensorflow as tf
 # an image rotation at arbitrary angles with tensorflow operators
 # without implementing it on a lower level
 #
+from PIL import Image
 
 def rota (image, angle):
 
@@ -37,6 +37,7 @@ def rota (image, angle):
   image.save (stream, format = 'PNG')
   return stream.getvalue ()
 
+@tf.function
 def rotate (image, angle):
 
   image = (image * 127.0) + 127.0

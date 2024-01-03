@@ -16,6 +16,7 @@
 #
 import tensorflow as tf
 
+@tf.function
 def paste (image, mask, x, y):
 
   image_width = tf.shape (image) [0]

@@ -16,11 +16,10 @@
 #
 from common import pic_height
 from common import pic_width
+from dataset import load
 from PIL import Image
-import argparse
-import keras
-import matplotlib.pyplot as plt
-import numpy
+import argparse, keras, numpy
+import tensorflow as tf
 
 def process ():
 
@@ -45,22 +44,17 @@ def process ():
   args = parser.parse_args ()
 
   model = keras.models.load_model (args.model)
+
   image = keras.preprocessing.image.load_img (args.input)
-  image_width = image.width
-  image_height = image.height
+  shape = (image.width, image.height)
 
   image = image.resize ((pic_width, pic_height))
   image = keras.preprocessing.image.img_to_array (image)
-  image = (image - 127.0) / 127.0
-  image = numpy.expand_dims (image, axis = 0)
-
-  image = model.predict (image) [0]
-
-  image = (image * 127.0) + 127.0
-  image = image.astype (numpy.uint8)
-  image = Image.fromarray (image)
-
-  image = image.resize ((image_width, image_height))
+  image = (image / 127.0) - 1.0
+  image = model.predict (numpy.expand_dims (image, axis = 0)) [0]
+  image = (image + 1.0) * 127.0
+  image = keras.preprocessing.image.array_to_img (image, scale = False)
+  image = image.resize (shape)
   image.save (args.output)
 
 process ()
