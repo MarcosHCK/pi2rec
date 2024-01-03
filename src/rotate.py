@@ -14,15 +14,7 @@
 # You should have received a copy of the GNU General Public License
 # along with pi2rec. If not, see <http://www.gnu.org/licenses/>.
 #
+import tensorflow as tf
 
-__pycache__
-
-/.vscode/
-/*.keras
-/*.svg
-
-/test/**
-/input.jpg
-/input[0-9].jpg
-/output.jpg
-/mask.png
+def rotate (image, angle):
+  return image
