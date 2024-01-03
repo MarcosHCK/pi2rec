@@ -20,7 +20,7 @@ from common import pic_height, pic_width
 from paste import paste
 from rotate import rotate
 from PIL import Image
-import argparse, io, keras, math, os, random
+import argparse, io, keras, math, numpy, os, random
 import tensorflow as tf
 
 a_cone = math.pi / 8
@@ -83,14 +83,26 @@ def load (inputs):
   image = tf.image.resize (image, [ pic_width, pic_height ])
   return image
 
-def prepare (root):
+def prepare (root, use_svg):
 
-  mask = Image.open ('mask.png', mode = 'r')
   mask_width = (int) (pic_width * (ideal_x_size / ideal_x_for))
   mask_height = (int) (pic_height * (ideal_y_size / ideal_y_for))
-  mask = mask.resize ((mask_width, mask_height))
-  mask = keras.preprocessing.image.img_to_array (mask, dtype = numpy.float32)
-  mask = tf.constant (mask / 255.0)
+
+  if not use_svg:
+
+    mask = Image.open ('mask.png', mode = 'r')
+    mask = mask.resize ((mask_width, mask_height))
+    mask = keras.preprocessing.image.img_to_array (mask, dtype = numpy.float32)
+    mask = tf.constant (mask / 255.0)
+  else:
+    import cairosvg
+
+    stream = io.BytesIO ()
+    cairosvg.svg2png (url = 'mask.svg', output_width = mask_width, output_height = mask_height, write_to = stream)
+
+    mask = Image.open (stream)
+    mask = keras.preprocessing.image.img_to_array (mask, dtype = numpy.float32)
+    mask = tf.constant (mask / 255.0)
 
   images = tf.data.Dataset.list_files (os.path.join (root, '*.JPG'))
   images = images.map (lambda x: (x, x), num_parallel_calls = tf.data.AUTOTUNE)
@@ -138,15 +150,18 @@ def program ():
 
   parser.add_argument ('dataset',
       help = 'dataset root',
-      metavar = 'dataset',
+      metavar = 'directory',
       type = str)
   parser.add_argument ('--sample',
       help = 'take dataset sample',
-      metavar  = 'sample',
+      metavar  = 'N',
       type = int)
+  parser.add_argument ('--use-svg',
+      action = 'store_true',
+      help = 'use SVG masks (instead of PNG)')
 
   args = parser.parse_args ()
-  dataset = prepare (args.dataset)
+  dataset = prepare (args.dataset, args.use_svg)
 
   if (args.sample != None):
     size = args.sample
