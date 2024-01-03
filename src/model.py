@@ -17,8 +17,10 @@
 from common import loss_ssim
 from common import metric_psnr, metric_ssim
 from common import pic_height, pic_width
+from paste import paste
+from rotate import rotate
 from PIL import Image
-import io, keras, math, os, random, subprocess, tempfile
+import io, keras, math, numpy, os, random, subprocess, tempfile
 import tensorflow as tf
 
 a_cone = math.pi / 8
@@ -29,71 +31,69 @@ ideal_y_size = 87.0
 
 def ellipse (zeta : float, a : float, b : float) -> float:
 
-  asin = (a ** 2) * (math.sin (zeta) ** 2)
-  bcos = (b ** 2) * (math.cos (zeta) ** 2)
-  root = math.sqrt (asin + bcos)
-
+  asin = (a ** 2) * (tf.sin (zeta) ** 2)
+  bcos = (b ** 2) * (tf.cos (zeta) ** 2)
+  root = tf.sqrt (asin + bcos)
   return (a * b) / root
 
-def normal (n_min : float, n_max : float) -> float:
+def normal (minval : float = 0.0, maxval : float = 1.0) -> float:
 
-  u1 = random.random ()
-  u2 = random.random ()
+  mean = (minval + maxval) / tf.constant (2.0)
+  stddev = (minval - maxval) / tf.constant (2.0 * 1.645)
 
-  z = math.sqrt (-2.0 * math.log (u1)) * math.cos (2.0 * math.pi * u2)
+  return tf.random.normal ((), dtype = tf.float32, mean = mean, stddev = stddev)
 
-  mean = (n_min + n_max) / 2.0
-  dev = (n_min - n_max) / (2.0 * 1.645)
+def uniform (minval : float = 0.0, maxval : float = 1.0) -> float:
 
-  return z * dev + mean
+  return tf.random.uniform ((), dtype = tf.float32, minval = minval, maxval = maxval)
 
-def blender (inputs):
+def blend (inputs, mask):
 
-  data = inputs.numpy ()
-  source = Image.open ('mask.png')
-  canvas = Image.open (io.BytesIO (data))
+  angle_cone = tf.constant (a_cone)
+  ideal_x_ratio = tf.constant (ideal_x_size / ideal_x_for)
+  ideal_y_ratio = tf.constant (ideal_y_size / ideal_y_for)
+  pi_2 = tf.constant (math.pi / 2)
 
-  source_width = (int) (canvas.width * (ideal_x_size / ideal_x_for))
-  source_height = (int) (canvas.height * (ideal_y_size / ideal_y_for))
-  source = source.resize ((source_width, source_height))
+  canvas = tf.io.read_file (inputs)
+  canvas = tf.image.decode_jpeg (canvas, channels = 3)
+  canvas = tf.image.convert_image_dtype (canvas, tf.float32)
+  canvas = tf.image.resize (canvas, [ pic_width, pic_height ])
 
-  zeta = random.random () * math.pi * 2
-  rho = normal (0, ellipse (zeta, source_width, source_height))
-  angle = normal (zeta - a_cone, zeta + a_cone) - (math.pi / 2)
+  canvas_width = tf.cast (tf.shape (canvas) [0], dtype = tf.float32)
+  canvas_height = tf.cast (tf.shape (canvas) [1], dtype = tf.float32)
+  mask_width = tf.cast (tf.shape (mask) [0], dtype = tf.float32)
+  mask_height = tf.cast (tf.shape (mask) [1], dtype = tf.float32)
 
-  source_xpos = (int) ((rho * math.cos (zeta)) + (source_width / 2))
-  source_ypos = (int) ((rho * math.sin (zeta)) + (source_height / 2))
+  zeta = uniform (0, tf.constant (2 * math.pi))
+  rho = normal (0, ellipse (zeta, mask_width, mask_height))
+  angle = normal (zeta - angle_cone, zeta + angle_cone) - pi_2
 
-  source = source.rotate ((angle * -360.0) / (math.pi * 2), expand = True)
+  mask_x = (rho * tf.cos (zeta)) + (mask_width / 2)
+  mask_y = (rho * tf.sin (zeta)) + (mask_height / 2)
+  mask = rotate (mask, angle)
 
-  canvas.paste (source, (source_xpos, source_ypos), source)
-
-  output = io.BytesIO ()
-  canvas.save (output, format = 'JPEG')
-  return output.getvalue ()
-
-def blend (inputs):
-
-  image = tf.io.read_file (inputs)
-  image = tf.py_function (blender, [image], tf.string)
-  image = tf.image.decode_jpeg (image, channels = 3)
-  image = tf.image.convert_image_dtype (image, tf.float32)
-  image = tf.image.resize (image, [pic_width, pic_height])
-  return image
+  return paste (canvas, mask, tf.cast (mask_x, tf.int32), tf.cast (mask_y, tf.int32))
 
 def load (inputs):
 
   image = tf.io.read_file (inputs)
   image = tf.image.decode_jpeg (image, channels = 3)
   image = tf.image.convert_image_dtype (image, tf.float32)
-  image = tf.image.resize (image, [pic_width, pic_height])
+  image = tf.image.resize (image, [ pic_width, pic_height ])
   return image
 
 def prepare (root):
 
+  mask = Image.open ('mask.png', mode = 'r')
+  mask_width = (int) (pic_width * (ideal_x_size / ideal_x_for))
+  mask_height = (int) (pic_height * (ideal_y_size / ideal_y_for))
+  mask = mask.resize ((mask_width, mask_height))
+  mask = keras.preprocessing.image.img_to_array (mask, dtype = numpy.float32)
+  mask = tf.constant (mask / 255.0)
+
   images = tf.data.Dataset.list_files (os.path.join ('../dataset2', '*.JPG'))
   images = images.map (lambda x: (x, x), num_parallel_calls = tf.data.AUTOTUNE)
-  images = images.map (lambda x1, x2: (blend (x1), load (x2)), num_parallel_calls = tf.data.AUTOTUNE)
+  images = images.map (lambda x1, x2: (blend (x1, mask), load (x2)), num_parallel_calls = tf.data.AUTOTUNE)
   return images
 
 def train (dataset):
@@ -123,3 +123,16 @@ def train (dataset):
 dataset = prepare ('../dataset3')
 model = train (dataset.batch (8))
 model.save ('pi2rec.keras')
+
+#def take_sample (dataset, size, directory):
+#
+#  if not os.path.exists (directory):
+#    os.mkdir (directory)
+#  for i, (image, target) in enumerate (dataset.take (10)):
+#
+#    image = keras.preprocessing.image.array_to_img (image * 255.0)
+#    image.save (os.path.join (directory, f'input_{i}.jpg'))
+#    image = keras.preprocessing.image.array_to_img (target * 255.0)
+#    image.save (os.path.join (directory, f'target_{i}.jpg'))
+#
+#take_sample (dataset, 10, 'dataset_sample/')
