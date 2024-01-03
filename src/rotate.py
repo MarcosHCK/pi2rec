@@ -39,9 +39,14 @@ def rota (image, angle):
 
 def rotate (image, angle):
 
-  image = tf.image.convert_image_dtype (image, tf.uint8)
+  image = (image * 127.0) + 127.0
+  image = tf.cast (image, dtype = tf.uint8)
   image = tf.image.encode_png (image)
+
   image = tf.py_function (rota, [image, angle], tf.string)
+
   image = tf.image.decode_png (image, channels = 4)
-  image = tf.image.convert_image_dtype (image, tf.float32)
+  image = tf.cast (image, dtype = tf.float32)
+  image = (image - 127.0) / 127.0
+
   return image

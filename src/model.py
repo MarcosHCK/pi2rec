@@ -85,30 +85,32 @@ def load (inputs):
 
   image = tf.io.read_file (inputs)
   image = tf.image.decode_jpeg (image, channels = 3)
-  image = tf.image.convert_image_dtype (image, tf.float32)
+  image = tf.cast (image, dtype = tf.float32)
+  image = (image - 127.0) / 127.0
   image = tf.image.resize (image, [ pic_width, pic_height ])
   return image
 
-def prepare (root, use_svg = False):
+def prepare (root, mask_file = 'mask.png', use_svg = False):
 
   mask_width = (int) (pic_width * (ideal_x_size / ideal_x_for))
   mask_height = (int) (pic_height * (ideal_y_size / ideal_y_for))
 
   if not use_svg:
 
-    mask = Image.open ('mask.png', mode = 'r')
+    mask = Image.open (mask_file, mode = 'r')
     mask = mask.resize ((mask_width, mask_height))
     mask = keras.preprocessing.image.img_to_array (mask, dtype = numpy.float32)
-    mask = tf.constant (mask / 255.0)
+    mask = tf.constant ((mask - 127.0) / 127.0)
   else:
+
     import cairosvg
 
     stream = io.BytesIO ()
-    cairosvg.svg2png (url = 'mask.svg', output_width = mask_width, output_height = mask_height, write_to = stream)
+    cairosvg.svg2png (url = mask_file, output_width = mask_width, output_height = mask_height, write_to = stream)
 
     mask = Image.open (stream)
     mask = keras.preprocessing.image.img_to_array (mask, dtype = numpy.float32)
-    mask = tf.constant (mask / 255.0)
+    mask = tf.constant ((mask - 127.0) / 127.0)
 
   images = tf.data.Dataset.list_files (os.path.join (root, '*.JPG'))
   images = images.map (lambda x: (x, x), num_parallel_calls = tf.data.AUTOTUNE)
@@ -145,9 +147,9 @@ def take_sample (dataset, size, directory):
     os.mkdir (directory)
   for i, (image, target) in enumerate (dataset.take (10)):
 
-    image = keras.preprocessing.image.array_to_img (image * 255.0)
+    image = keras.preprocessing.image.array_to_img ((image * 127.0) + 127.0)
     image.save (os.path.join (directory, f'input_{i}.jpg'))
-    image = keras.preprocessing.image.array_to_img (target * 255.0)
+    image = keras.preprocessing.image.array_to_img ((target * 127.0) + 127.0)
     image.save (os.path.join (directory, f'target_{i}.jpg'))
 
 def program ():
@@ -162,6 +164,10 @@ def program ():
       help = 'epoch number to train in',
       metavar  = 'N',
       type = int)
+  parser.add_argument ('--mask',
+      help = 'epoch number to train in',
+      metavar  = 'N',
+      type = str)
   parser.add_argument ('--output',
       default = 'pi2rec.keras',
       help = 'take dataset sample',
@@ -181,7 +187,7 @@ def program ():
       help = 'use SVG masks (instead of PNG)')
 
   args = parser.parse_args ()
-  dataset = prepare (args.dataset, args.use_svg)
+  dataset = prepare (args.dataset, args.mask, args.use_svg)
 
   if (args.sample != None):
     size = args.sample

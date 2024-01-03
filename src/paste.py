@@ -37,9 +37,31 @@ def paste (image, mask, x, y):
   bound_y = tf.maximum (0, tf.minimum (mask_height - off_y, image_height - y))
   mask = mask [off_x : off_x + bound_x, off_y : off_y + bound_y, :]
 
-  pad_x = [x, image_width - (x + bound_x)]
-  pad_y = [y, image_height - (y + bound_y)]
-  mask = tf.pad (mask, [ pad_x, pad_y, [0, 0] ], mode = 'CONSTANT')
+  pad_v = tf.constant (-1.0)
+  pad_x = [ x, image_width - (x + bound_x) ]
+  pad_y = [ y, image_height - (y + bound_y) ]
+  pad = [ pad_x, pad_y, [0, 0] ]
+
+  mask = tf.pad (mask, pad, constant_values = pad_v, mode = 'CONSTANT')
   alpha = mask [:, :, 3:]
 
-  return (alpha * mask [:, :, :3]) + (image * (1 - alpha))
+  #
+  # This is a derivation of the original alpha blending formula:
+  #
+  #   R = A * M + (1 - A) * I
+  # where:
+  #   - R: result image
+  #   - A: alpha channel vector (WxHx1 matrix)
+  #   - M: mask RGB vector (WxHx3 matrix)
+  #   - I: image RGB vector (WxHx3 matrix)
+  #
+  # All values of R, A, M, I should be normalized in the range
+  # of [0, 1], but since input image is the range of [-1, 1]
+  # it has to be transformed: R = (R' + 1) / 2, [-1, 1] => [0, 1]
+  #
+  # So the new formula is:
+  #
+  #   R = ( (1 - 2A)I + (1 + 2A)M ) / 2
+  #
+
+  return ((1 - 2*alpha) * image + (1 + 2*alpha) * mask [:, :, :3]) / 2

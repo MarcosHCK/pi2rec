@@ -48,15 +48,19 @@ def process ():
   image = keras.preprocessing.image.load_img (args.input)
   image_width = image.width
   image_height = image.height
+
   image = image.resize ((pic_width, pic_height))
   image = keras.preprocessing.image.img_to_array (image)
-  image = image / 255.0
-  batch = numpy.expand_dims (image, axis = 0)
-  result = model.predict (batch)
-  result = result [0] * 255.0
-  result = result.astype (numpy.uint8)
-  result = Image.fromarray (result)
-  result = result.resize ((image_width, image_height))
-  result.save (args.output)
+  image = (image - 127.0) / 127.0
+  image = numpy.expand_dims (image, axis = 0)
+
+  image = model.predict (image) [0]
+
+  image = (image * 127.0) + 127.0
+  image = image.astype (numpy.uint8)
+  image = Image.fromarray (image)
+
+  image = image.resize ((image_width, image_height))
+  image.save (args.output)
 
 process ()
