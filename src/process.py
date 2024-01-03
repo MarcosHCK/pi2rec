@@ -22,20 +22,17 @@ import keras
 import matplotlib.pyplot as plt
 import numpy
 
-def loss_ssim (y_true, y_pred):
-  return 1 - tf.image.ssim (y_true, y_pred, max_val = 1.0)
-
-def parse_args ():
+def process ():
 
   parser = argparse.ArgumentParser (description = 'pi2rec')
 
-  parser.add_argument ('--InputImage',
+  parser.add_argument ('--input',
       default = 'input.jpg',
       help = 'input image to process',
       metavar = 'input',
       required = False,
       type = str)
-  parser.add_argument ('--OutputImage',
+  parser.add_argument ('--output',
       default = 'output.jpg',
       help = 'where to output the result image',
       metavar = 'output',
@@ -44,21 +41,19 @@ def parse_args ():
 
   args = parser.parse_args ()
 
-  return (args.InputImage, args.OutputImage)
+  model = keras.models.load_model ('pi2rec.keras')
+  image = keras.preprocessing.image.load_img (args.input)
+  image_width = image.width
+  image_height = image.height
+  image = image.resize ((pic_width, pic_height))
+  image = keras.preprocessing.image.img_to_array (image)
+  image = image / 255.0
+  batch = numpy.expand_dims (image, axis = 0)
+  result = model.predict (batch)
+  result = result [0] * 255.0
+  result = result.astype (numpy.uint8)
+  result = Image.fromarray (result)
+  result = result.resize ((image_width, image_height))
+  result.save (args.output)
 
-custom_objects = { 'loss_ssim' : loss_ssim }
-input_file, output_file = parse_args ()
-model = keras.models.load_model ('pi2rec.keras', custom_objects = custom_objects)
-image = keras.preprocessing.image.load_img (input_file)
-image_width = image.width
-image_height = image.height
-image = image.resize ((pic_width, pic_height))
-image = keras.preprocessing.image.img_to_array (image)
-image = image / 255.0
-batch = numpy.expand_dims (image, axis = 0)
-result = model.predict (batch)
-result = result [0] * 255.0
-result = result.astype (numpy.uint8)
-result = Image.fromarray (result)
-result = result.resize ((image_width, image_height))
-result.save (output_file)
+process ()
