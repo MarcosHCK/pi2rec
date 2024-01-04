@@ -16,178 +16,102 @@
 #
 from common import pic_width
 from common import pic_height
-from dataset import Dataset
 from datetime import datetime
 from discriminator import Discriminator, DiscriminatorLoss
 from generator import Generator, GeneratorLoss
-from paste import paste
-from rotate import rotate
-import argparse, io, keras, numpy, os, random, time
+import keras, numpy, os, time
 import tensorflow as tf
 
-def train (dataset, checkpoint_dir = 'checkpoints/', checkpoint_prefix = 'ckp', log_dir = 'logs/'):
+class Pi2REC ():
 
-  if pic_width % 4 != 0:
-    raise Exception ('pic_width is not a power of 4')
-  if pic_height % 4 != 0:
-    raise Exception ('pic_width is not a power of 4')
+  def __init__ (self, checkpoint_dir = 'checkpoints/', checkpoint_prefix = 'ckp'):
 
-  metrics = [ keras.metrics.MeanSquaredError (), metric_psnr, metric_ssim ]
+    self.discriminator = Discriminator (pic_width, pic_height, channels = 3)
+    self.generator = Generator (pic_width, pic_height, channels = 3)
+    
+    self.checkpoint_dir = checkpoint_dir
+    self.checkpoint_prefix = os.path.join (checkpoint_dir, checkpoint_prefix)
 
-  generator = Generator (pic_width, pic_height, channels = 3)
-  discriminator = Discriminator (pic_width, pic_height, channels = 3)
+  def train (self, dataset : "DatasetV2", log_dir : str = 'logs/', freeze : bool = False):
 
-  generator_loss = GeneratorLoss ()
-  discriminator_loss = DiscriminatorLoss ()
+    checkpoint_dir = self.checkpoint_dir
+    checkpoint_prefix = self.checkpoint_prefix
 
-  generator_optimizer = keras.optimizers.Adam (2e-4, beta_1 = 0.5)
-  discriminator_optimizer = keras.optimizers.Adam (2e-4, beta_1 = 0.5)
+    discriminator = self.discriminator
+    discriminator_loss = DiscriminatorLoss ()
+    discriminator_optimizer = keras.optimizers.Adam (2e-4, beta_1 = 0.5)
 
-  log_name = datetime.now ().strftime ('%Y%m%d-%H%M%S')
-  log_name = os.path.join (log_dir, log_name)
+    generator = self.generator
+    generator_loss = GeneratorLoss ()
+    generator_optimizer = keras.optimizers.Adam (2e-4, beta_1 = 0.5)
 
-  summary_writer = tf.summary.create_file_writer (log_name)
+    log_name = datetime.now ().strftime ('%Y%m%d-%H%M%S')
+    log_name = os.path.join (log_dir, log_name)
 
-  checkpoint_prefix = os.path.join (checkpoint_dir, checkpoint_prefix)
-  checkpoint = tf.train.Checkpoint (discriminator_optimizer = discriminator_optimizer,
-                                    generator_optimizer = generator_optimizer,
-                                    discriminator = discriminator,
-                                    generator = generator)
+    checkpoint = tf.train.Checkpoint (
+      discriminator_optimizer = discriminator_optimizer,
+      generator_optimizer = generator_optimizer,
+      discriminator = discriminator,
+      generator = generator)
 
-  # Actual training loop
+    summary_writer = tf.summary.create_file_writer (log_name)
 
-  @tf.function
-  def fit_step (inputs, target, n : int, summary_writer : tf.summary.SummaryWriter):
+    if not os.path.exists (checkpoint_dir):
 
-    with tf.GradientTape () as gen_tape, tf.GradientTape () as dis_tape:
+      os.makedirs (checkpoint_dir)
 
-      y_pred = generator (inputs, training = True)
-      y_true = discriminator ([inputs, target], training = True)
-      y_disc = discriminator ([inputs, y_pred], training = True)
+    else:
 
-      loss_total, loss_gan, loss_l1 = generator_loss (y_disc, y_pred, target)
-      loss_disc = discriminator_loss (y_true, y_disc)
+      latest = tf.train.latest_checkpoint (checkpoint_dir)
 
-    generator_grads = gen_tape.gradient (loss_total, generator.trainable_variables)
-    discriminator_grads = dis_tape.gradient (loss_disc, discriminator.trainable_variables)
+      if latest != None:
 
-    generator_optimizer.apply_gradients (zip (generator_grads, generator.trainable_variables))
-    discriminator_optimizer.apply_gradients (zip (discriminator_grads, discriminator.trainable_variables))
+        checkpoint.restore (latest)
 
-    with summary_writer.as_default ():
+    @tf.function
+    def fit_step (input_image, target, n : int, summary_writer : tf.summary.SummaryWriter):
 
-      tf.summary.scalar ('loss_total', loss_total, step = n)
-      tf.summary.scalar ('loss_gan', loss_gan, step = n)
-      tf.summary.scalar ('loss_l1', loss_l1, step = n)
-      tf.summary.scalar ('loss_disc', loss_disc, step = n)
+      with tf.GradientTape () as gen_tape, tf.GradientTape () as dis_tape:
 
-  def fit (dataset : "DatasetV2", steps : int, summary_writer : tf.summary.SummaryWriter):
+        y_pred = generator (input_image, training = True)
+        y_true = discriminator ([input_image, target], training = True)
+        y_disc = discriminator ([input_image, y_pred], training = True)
 
-    begin = time.time ()
-    cyclesz = len (dataset)
+        loss_total, loss_gan, loss_l1 = generator_loss (y_disc, y_pred, target)
+        loss_disc = discriminator_loss (y_true, y_disc)
 
-    for step, (image, target) in dataset.repeat ().take (steps).enumerate ():
+      generator_grads = gen_tape.gradient (loss_total, generator.trainable_variables)
+      discriminator_grads = dis_tape.gradient (loss_disc, discriminator.trainable_variables)
 
-      if step % cyclesz == 0 and step > 0:
+      generator_optimizer.apply_gradients (zip (generator_grads, generator.trainable_variables))
+      discriminator_optimizer.apply_gradients (zip (discriminator_grads, discriminator.trainable_variables))
 
-        print (f'')
-        print (f'Time taken for {steps} steps: {time.time () - begin} seconds, checkpoint hit')
+      with summary_writer.as_default ():
 
-        begin = time.time ()
-        checkpoint.save (file_prefix = checkpoint_prefix)
+        tf.summary.scalar ('loss_total', loss_total, step = n)
+        tf.summary.scalar ('loss_gan', loss_gan, step = n)
+        tf.summary.scalar ('loss_l1', loss_l1, step = n)
+        tf.summary.scalar ('loss_disc', loss_disc, step = n)
 
-      fit_step (image, target, step, summary_writer)
+    def fit (dataset : "DatasetV2", steps : int, summary_writer : tf.summary.SummaryWriter):
 
-      print ('.', end = '', flush = True)
+      begin = time.time ()
+      cyclesz = len (dataset)
 
-  if not os.path.exists (checkpoint_dir):
+      for step, (image, target) in dataset.repeat ().take (steps).enumerate ():
 
-    os.makedirs (checkpoint_dir)
+        if step % cyclesz == 0 and step > 0:
 
-  else:
+          print (f'')
+          print (f'Time taken for {cyclesz} steps: {time.time () - begin} seconds, checkpoint hit')
 
-    latest = tf.train.latest_checkpoint (checkpoint_dir)
+          checkpoint.save (file_prefix = checkpoint_prefix)
+          begin = time.time ()
 
-    if latest != None:
+        fit_step (image, target, step, summary_writer)
 
-      checkpoint.restore (latest)
+        print ('.', end = '', flush = True)
 
-  fit (dataset, 33, summary_writer = summary_writer)
-  return generator
+    if not freeze:
 
-def take_sample (dataset, size, directory):
-
-  if not os.path.exists (directory):
-    os.mkdir (directory)
-  for i, (image, target) in enumerate (dataset.take (size)):
-
-    image = keras.preprocessing.image.array_to_img ((image * 127.0) + 127.0)
-    image.save (os.path.join (directory, f'input_{i}.jpg'))
-    image = keras.preprocessing.image.array_to_img ((target * 127.0) + 127.0)
-    image.save (os.path.join (directory, f'target_{i}.jpg'))
-
-def program ():
-
-  parser = argparse.ArgumentParser (description = 'pi2rec')
-
-  parser.add_argument ('dataset',
-      default = 'dataset/',
-      help = 'dataset root',
-      metavar = 'directory',
-      type = str)
-  parser.add_argument ('--checkpoint-dir',
-      default = 'checkpoints/',
-      help = 'checkpoints root',
-      metavar = 'directory',
-      type = str)
-  parser.add_argument ('--checkpoint-prefix',
-      default = 'chkp',
-      help = 'checkpoints prefix',
-      metavar = 'prefix',
-      type = str)
-  parser.add_argument ('--log-dir',
-      default = 'logs/',
-      help = 'logs root',
-      metavar = 'directory',
-      type = str)
-  parser.add_argument ('--mask',
-      default = 'mask.png',
-      help = 'epoch number to train in',
-      metavar  = 'file',
-      type = str)
-  parser.add_argument ('--output',
-      default = 'pi2rec.keras',
-      help = 'take dataset sample',
-      metavar  = 'directory',
-      type = str)
-  parser.add_argument ('--sample',
-      help = 'take dataset sample',
-      metavar  = 'N',
-      type = int)
-  parser.add_argument ('--sample-at',
-      default = 'dataset_sample/',
-      help = 'take dataset sample',
-      metavar  = 'directory',
-      type = str)
-  parser.add_argument ('--use-svg',
-      action = 'store_true',
-      help = 'use SVG masks (instead of PNG)')
-
-  args = parser.parse_args ()
-
-  dataset = Dataset (args.dataset, args.mask, args.use_svg)
-
-  if args.sample != None:
-
-    take_sample (dataset, args.sample, args.sample_at)
-
-  else:
-
-    dataset = dataset.shuffle (400)
-    dataset = dataset.batch (1)
-
-    model = train (dataset, args.checkpoint_dir, args.checkpoint_prefix, args.log_dir)
-
-    model.save (args.output)
-
-program ()
+      fit (dataset, 3333333, summary_writer = summary_writer)

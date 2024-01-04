@@ -98,7 +98,7 @@ def targetize (path, mask):
   before = blend (after, mask)
   return (before, after)
 
-def Dataset (root : str, mask_file : str = 'mask.png', use_svg : bool = False) -> "DatasetV2":
+def Dataset (root : str, mask_file : str = 'mask.svg', use_svg : bool = True) -> "DatasetV2":
 
   mask_width = (int) (pic_width * (ideal_x_size / ideal_x_for))
   mask_height = (int) (pic_height * (ideal_y_size / ideal_y_for))

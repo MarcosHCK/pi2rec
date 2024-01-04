@@ -21,6 +21,12 @@ from keras.saving import register_keras_serializable
 pic_width = 1024
 pic_height = 1024
 
+if pic_width % 4 != 0:
+  raise Exception ('pic_width is not a power of 4')
+
+if pic_height % 4 != 0:
+  raise Exception ('pic_width is not a power of 4')
+
 @register_keras_serializable ()
 def loss_ssim (y_true, y_pred):
   return 1 - ssim (y_true, y_pred, max_val = 1.0)
