@@ -28,10 +28,6 @@ if pic_height % 4 != 0:
   raise Exception ('pic_width is not a power of 4')
 
 @register_keras_serializable ()
-def loss_ssim (y_true, y_pred):
-  return 1 - ssim (y_true, y_pred, max_val = 1.0)
-
-@register_keras_serializable ()
 def metric_psnr (y_true, y_pred):
   return psnr (y_true, y_pred, max_val = 1.0)
 

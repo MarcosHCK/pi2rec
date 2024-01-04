@@ -48,7 +48,7 @@ def program ():
   parser.add_argument ('--use-svg', default = True, help = 'use SVG masks (needs CairoSVG)', metavar = '<Y/N>', type = bool)
 
   # Subsystems
-  parser.add_argument ('--freeze', help = 'use Pi2REC model to process FILE', metavar  = 'FILE', type = str)
+  parser.add_argument ('--freeze', help = 'use Pi2REC model to process FILE', action = 'store_true')
   parser.add_argument ('--process', help = 'use Pi2REC model to process FILE', metavar  = 'FILE', type = str)
   parser.add_argument ('--sample', help = 'take samples from dataset at DIRECTORY', metavar  = 'DIRECTORY', type = str)
   parser.add_argument ('--train', help = 'train using dataset at DIRECTORY', metavar = 'DIRECTORY', type = str)
@@ -68,7 +68,7 @@ def program ():
     image = model.predict (numpy.expand_dims (image, axis = 0)) [0]
     image = (image + 1.0) * 127.0
 
-    image = keras.preprocessing.image.array_to_img (image, scale = False)
+    image = keras.preprocessing.image.array_to_img (image)
     image = image.resize (shape)
 
     image.save ('output.jpg' if args.output == None else args.output)
@@ -83,22 +83,19 @@ def program ():
 
     for i, (image, target) in enumerate (dataset.take (args.sample_size)):
 
-      image = keras.preprocessing.image.array_to_img ((image * 127.0) + 127.0)
+      image = keras.preprocessing.image.array_to_img ((image + 1.0) * 127.0)
       image.save (os.path.join (args.sample_at, f'input_{i}.jpg'))
-      image = keras.preprocessing.image.array_to_img ((target * 127.0) + 127.0)
+      image = keras.preprocessing.image.array_to_img ((target + 1.0) * 127.0)
       image.save (os.path.join (args.sample_at, f'target_{i}.jpg'))
 
   elif args.train != None or args.freeze != None:
 
     model = Pi2REC (args.checkpoint_dir, args.checkpoint_prefix)
 
-    if args.freeze != None:
+    if args.freeze:
 
-      dataset = tf.data.Dataset.range (0)
-      dataset = dataset.batch (1)
-
-      model.train (dataset, args.log_dir, freeze = True)
-      model.generator.save (args.freeze)
+      model.freeze (dataset)
+      model.generator.save (args.model)
 
     else:
 
@@ -108,5 +105,6 @@ def program ():
       dataset = dataset.batch (1)
 
       model.train (dataset, args.log_dir)
+      model.generator.save (args.model)
 
 program ()

@@ -20,7 +20,8 @@ import tensorflow as tf
 
 def Discriminator (pic_width, pic_height, channels):
 
-  initzr = keras.initializers.RandomNormal (mean = 0.0, stddev = 0.02)
+  initzr1 = keras.initializers.RandomNormal (mean = 0.0, stddev = 0.02)
+  initzr2 = keras.initializers.RandomNormal (mean = 0.0, stddev = 0.02)
 
   inputs_true = keras.layers.Input (shape = [pic_width, pic_height, channels], name = 'y_true')
   inputs_pred = keras.layers.Input (shape = [pic_width, pic_height, channels], name = 'y_pred')
@@ -31,11 +32,11 @@ def Discriminator (pic_width, pic_height, channels):
   down3 = downsampler (units * 4, 4, normalize = False) (down2)
 
   zeropad1 = keras.layers.ZeroPadding2D () (down3)
-  conv = keras.layers.Conv2D (units * 8, 4, strides = 1, kernel_initializer = initzr, use_bias = False) (zeropad1)
+  conv = keras.layers.Conv2D (units * 8, 4, strides = 1, kernel_initializer = initzr1, use_bias = False) (zeropad1)
   normalize = keras.layers.BatchNormalization () (conv)
   activation = keras.layers.LeakyReLU () (normalize)
   zeropad2 = keras.layers.ZeroPadding2D () (activation)
-  last = keras.layers.Conv2D (1, 4, strides = 1, kernel_initializer = initzr) (zeropad2)
+  last = keras.layers.Conv2D (1, 4, strides = 1, kernel_initializer = initzr2) (zeropad2)
 
   return keras.Model (inputs = [ inputs_true, inputs_pred ], outputs = last)
 
