@@ -21,8 +21,12 @@ __pycache__
 /*.keras
 /*.svg
 
+/checkpoints/**
+/logs/**
+sample/**
 /test/**
+
 /input.jpg
 /input[0-9].jpg
 /output.jpg
-/mask.png
+/output[0-9].jpg

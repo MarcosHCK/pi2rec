@@ -16,6 +16,7 @@
 #
 import tensorflow as tf
 
+@tf.function
 def paste (image, mask, x, y):
 
   image_width = tf.shape (image) [0]
@@ -23,30 +24,45 @@ def paste (image, mask, x, y):
   mask_width = tf.shape (mask) [0]
   mask_height = tf.shape (mask) [1]
 
-  def adjust_offs (x, y):
+  off_x = tf.where (tf.greater_equal (x, 0), 0, -x)
+  off_y = tf.where (tf.greater_equal (y, 0), 0, -y)
+  x = tf.where (tf.less (x, 0), 0, x)
+  y = tf.where (tf.less (y, 0), 0, y)
 
-    off_x = tf.where (tf.greater_equal (x, 0), 0, -x)
-    off_y = tf.where (tf.greater_equal (y, 0), 0, -y)
-    x = tf.where (tf.less (x, 0), 0, x)
-    y = tf.where (tf.less (y, 0), 0, y)
-    return (x, y, off_x, off_y)
+  tf.assert_less (x, image_width,
+    message = 'paste position must be inside of image (or outside but just at the top-left sides)')
+  tf.assert_less (y, image_height,
+    message = 'paste position must be inside of image (or outside but just at the top-left sides)')
 
-  def dont_adjust_offs (x, y):
-    return (x, y, 0, 0)
+  bound_x = tf.maximum (0, tf.minimum (mask_width - off_x, image_width - x))
+  bound_y = tf.maximum (0, tf.minimum (mask_height - off_y, image_height - y))
+  mask = mask [off_x : off_x + bound_x, off_y : off_y + bound_y, :]
 
-  x, y, off_x, off_y = tf.cond (tf.logical_or (tf.less (x, 0), tf.less (y, 0)),
-                                  lambda: adjust_offs (x, y),
-                                  lambda: dont_adjust_offs (x, y))
+  pad_v = tf.constant (-1.0)
+  pad_x = [ x, image_width - (x + bound_x) ]
+  pad_y = [ y, image_height - (y + bound_y) ]
+  pad = [ pad_x, pad_y, [0, 0] ]
 
-  bound_x = x + (mask_width - off_x)
-  bound_y = y + (mask_height - off_y)
-  take_x = tf.where (tf.less (bound_x, image_width), mask_width, image_width - bound_x)
-  take_y = tf.where (tf.less (bound_y, image_height), mask_height, image_height - bound_y)
-  mask = mask [off_x : take_x, off_y : take_y, :]
-
-  pad_x = [x, image_width - (x + tf.shape (mask) [0])]
-  pad_y = [y, image_height - (y + tf.shape (mask) [1])]
-  mask = tf.pad (mask, [ pad_x, pad_y, [0, 0] ], mode = 'CONSTANT')
+  mask = tf.pad (mask, pad, constant_values = pad_v, mode = 'CONSTANT')
   alpha = mask [:, :, 3:]
 
-  return (alpha * mask [:, :, :3]) + (image * (1 - alpha))
+  #
+  # This is a derivation of the original alpha blending formula:
+  #
+  #   R = A * M + (1 - A) * I
+  # where:
+  #   - R: result image
+  #   - A: alpha channel vector (WxHx1 matrix)
+  #   - M: mask RGB vector (WxHx3 matrix)
+  #   - I: image RGB vector (WxHx3 matrix)
+  #
+  # All values of R, A, M, I should be normalized in the range
+  # of [0, 1], but since input image is the range of [-1, 1]
+  # it has to be transformed: R = (R' + 1) / 2, [-1, 1] => [0, 1]
+  #
+  # So the new formula is:
+  #
+  #   R = ( (1 - 2A)I + (1 + 2A)M ) / 2
+  #
+
+  return ((1 - 2*alpha) * image + (1 + 2*alpha) * mask [:, :, :3]) / 2

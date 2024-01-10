@@ -14,125 +14,145 @@
 # You should have received a copy of the GNU General Public License
 # along with pi2rec. If not, see <http://www.gnu.org/licenses/>.
 #
-from common import loss_ssim
 from common import metric_psnr, metric_ssim
-from common import pic_height, pic_width
-from paste import paste
-from rotate import rotate
-from PIL import Image
-import io, keras, math, numpy, os, random, subprocess, tempfile
+from common import pic_width, pic_height
+from datetime import datetime
+from discriminator import Discriminator, DiscriminatorLoss
+from generator import Generator, GeneratorLoss
+import keras, numpy, os, time
 import tensorflow as tf
 
-a_cone = math.pi / 8
-ideal_x_for = 488.0
-ideal_y_for = 406.0
-ideal_x_size = 333.0
-ideal_y_size = 87.0
+class Pi2REC ():
 
-def ellipse (zeta : float, a : float, b : float) -> float:
+  def __init__ (self, checkpoint_dir = 'checkpoints/', checkpoint_prefix = 'ckp'):
 
-  asin = (a ** 2) * (tf.sin (zeta) ** 2)
-  bcos = (b ** 2) * (tf.cos (zeta) ** 2)
-  root = tf.sqrt (asin + bcos)
-  return (a * b) / root
+    self.discriminator = Discriminator (pic_width, pic_height, channels = 3)
+    self.generator = Generator (pic_width, pic_height, channels = 3)
+    
+    self.checkpoint_dir = checkpoint_dir
+    self.checkpoint_prefix = os.path.join (checkpoint_dir, checkpoint_prefix)
 
-def normal (minval : float = 0.0, maxval : float = 1.0) -> float:
+  def freeze (self):
 
-  mean = (minval + maxval) / tf.constant (2.0)
-  stddev = (minval - maxval) / tf.constant (2.0 * 1.645)
+    latest = tf.train.latest_checkpoint (self.checkpoint_dir)
 
-  return tf.random.normal ((), dtype = tf.float32, mean = mean, stddev = stddev)
+    if latest != None:
 
-def uniform (minval : float = 0.0, maxval : float = 1.0) -> float:
+      checkpoint = tf.train.Checkpoint (discriminator = self.discriminator, generator = self.generator)
+      checkpoint.restore (latest)
 
-  return tf.random.uniform ((), dtype = tf.float32, minval = minval, maxval = maxval)
+  def train (self, dataset : "DatasetV2", log_dir : str = 'logs/'):
 
-def blend (inputs, mask):
+    checkpoint_dir = self.checkpoint_dir
+    checkpoint_prefix = self.checkpoint_prefix
 
-  angle_cone = tf.constant (a_cone)
-  ideal_x_ratio = tf.constant (ideal_x_size / ideal_x_for)
-  ideal_y_ratio = tf.constant (ideal_y_size / ideal_y_for)
-  pi_2 = tf.constant (math.pi / 2)
+    discriminator = self.discriminator
+    discriminator_loss = DiscriminatorLoss ()
+    discriminator_optimizer = keras.optimizers.Adam (2e-4, beta_1 = 0.5)
 
-  canvas = tf.io.read_file (inputs)
-  canvas = tf.image.decode_jpeg (canvas, channels = 3)
-  canvas = tf.image.convert_image_dtype (canvas, tf.float32)
-  canvas = tf.image.resize (canvas, [ pic_width, pic_height ])
+    generator = self.generator
+    generator_loss = GeneratorLoss ()
+    generator_optimizer = keras.optimizers.Adam (2e-4, beta_1 = 0.5)
 
-  canvas_width = tf.cast (tf.shape (canvas) [0], dtype = tf.float32)
-  canvas_height = tf.cast (tf.shape (canvas) [1], dtype = tf.float32)
-  mask_width = tf.cast (tf.shape (mask) [0], dtype = tf.float32)
-  mask_height = tf.cast (tf.shape (mask) [1], dtype = tf.float32)
+    log_name = datetime.now ().strftime ('%Y%m%d-%H%M%S')
+    log_name = os.path.join (log_dir, log_name)
 
-  zeta = uniform (0, tf.constant (2 * math.pi))
-  rho = normal (0, ellipse (zeta, mask_width, mask_height))
-  angle = normal (zeta - angle_cone, zeta + angle_cone) - pi_2
+    checkpoint = tf.train.Checkpoint (
+      discriminator_optimizer = discriminator_optimizer,
+      generator_optimizer = generator_optimizer,
+      discriminator = discriminator,
+      generator = generator)
 
-  mask_x = (rho * tf.cos (zeta)) + (mask_width / 2)
-  mask_y = (rho * tf.sin (zeta)) + (mask_height / 2)
-  mask = rotate (mask, angle)
+    metrics = [ metric_psnr, metric_ssim ]
 
-  return paste (canvas, mask, tf.cast (mask_x, tf.int32), tf.cast (mask_y, tf.int32))
+    summary_writer = tf.summary.create_file_writer (log_name)
 
-def load (inputs):
+    if not os.path.exists (checkpoint_dir):
 
-  image = tf.io.read_file (inputs)
-  image = tf.image.decode_jpeg (image, channels = 3)
-  image = tf.image.convert_image_dtype (image, tf.float32)
-  image = tf.image.resize (image, [ pic_width, pic_height ])
-  return image
+      os.makedirs (checkpoint_dir)
 
-def prepare (root):
+    else:
 
-  mask = Image.open ('mask.png', mode = 'r')
-  mask_width = (int) (pic_width * (ideal_x_size / ideal_x_for))
-  mask_height = (int) (pic_height * (ideal_y_size / ideal_y_for))
-  mask = mask.resize ((mask_width, mask_height))
-  mask = keras.preprocessing.image.img_to_array (mask, dtype = numpy.float32)
-  mask = tf.constant (mask / 255.0)
+      latest = tf.train.latest_checkpoint (checkpoint_dir)
 
-  images = tf.data.Dataset.list_files (os.path.join ('../dataset2', '*.JPG'))
-  images = images.map (lambda x: (x, x), num_parallel_calls = tf.data.AUTOTUNE)
-  images = images.map (lambda x1, x2: (blend (x1, mask), load (x2)), num_parallel_calls = tf.data.AUTOTUNE)
-  return images
+      if latest != None:
 
-def train (dataset):
+        checkpoint.restore (latest)
 
-  if pic_width % 4 != 0:
-    raise ValueError ("pic_width is not a power of 4")
-  if pic_height % 4 != 0:
-    raise ValueError ("pic_width is not a power of 4")
+    @tf.function
+    def fit_step (input_image, target, n, summary_writer):
 
-  loss = keras.losses.cosine_similarity
-  metrics = [ keras.metrics.MeanSquaredError (), metric_psnr, metric_ssim ]
+      with tf.GradientTape () as gen_tape, tf.GradientTape () as dis_tape:
 
-  model = keras.models.Sequential ()
-  model.add (keras.layers.Conv2D (16, (3, 3), activation = 'relu', padding = 'same'))
-  model.add (keras.layers.MaxPooling2D ((2, 2)))
-  model.add (keras.layers.Conv2D (32, (3, 3), activation = 'relu', padding = 'same'))
-  model.add (keras.layers.MaxPooling2D ((2, 2)))
-  model.add (keras.layers.BatchNormalization ())
-  model.add (keras.layers.Conv2DTranspose (32, (3, 3), strides = (2, 2), padding = 'same'))
-  model.add (keras.layers.Conv2DTranspose (3, (3, 3), strides = (2, 2), padding = 'same',
-    activation = 'tanh'))
+        y_pred = generator (input_image, training = True)
+        y_true = discriminator ([input_image, target], training = True)
+        y_disc = discriminator ([input_image, y_pred], training = True)
 
-  model.compile (loss = loss, metrics = metrics, optimizer = 'adam')
-  model.fit (dataset, epochs = 10, steps_per_epoch = len (dataset))
-  return model
+        loss_total, loss_gan, loss_l1 = generator_loss (y_disc, y_pred, target)
+        loss_disc = discriminator_loss (y_true, y_disc)
 
-dataset = prepare ('../dataset3')
-model = train (dataset.batch (8))
-model.save ('pi2rec.keras')
+      generator_grads = gen_tape.gradient (loss_total, generator.trainable_variables)
+      discriminator_grads = dis_tape.gradient (loss_disc, discriminator.trainable_variables)
 
-#def take_sample (dataset, size, directory):
-#
-#  if not os.path.exists (directory):
-#    os.mkdir (directory)
-#  for i, (image, target) in enumerate (dataset.take (10)):
-#
-#    image = keras.preprocessing.image.array_to_img (image * 255.0)
-#    image.save (os.path.join (directory, f'input_{i}.jpg'))
-#    image = keras.preprocessing.image.array_to_img (target * 255.0)
-#    image.save (os.path.join (directory, f'target_{i}.jpg'))
-#
-#take_sample (dataset, 10, 'dataset_sample/')
+      generator_optimizer.apply_gradients (zip (generator_grads, generator.trainable_variables))
+      discriminator_optimizer.apply_gradients (zip (discriminator_grads, discriminator.trainable_variables))
+
+      with summary_writer.as_default ():
+
+        tf.summary.scalar ('loss_total', loss_total, step = n)
+        tf.summary.scalar ('loss_gan', loss_gan, step = n)
+        tf.summary.scalar ('loss_l1', loss_l1, step = n)
+        tf.summary.scalar ('loss_disc', loss_disc, step = n)
+
+    def fit (dataset : "DatasetV2", steps : int, summary_writer : tf.summary.SummaryWriter):
+
+      begin = time.time ()
+      cyclesz = len (dataset)
+
+      checkpoint_rate = cyclesz * 8
+
+      sample_rate = int (cyclesz / 4)
+      sample_input, sample_target = next (iter (dataset.take (1)))
+
+      for step, (image, target) in dataset.repeat ().take (steps).enumerate ():
+
+        if step % cyclesz == 0 and step > 0:
+
+          print (f'')
+          print (f'Time taken for {cyclesz} steps: {time.time () - begin} seconds')
+          begin = time.time ()
+
+        if step % checkpoint_rate == 0 and step > 0:
+
+          print ('Times for a checkpoint, right?')
+          checkpoint.save (file_prefix = checkpoint_prefix)
+
+        try:
+          fit_step (image, target, step, summary_writer)
+        except KeyboardInterrupt:
+
+          print ('e')
+          break
+
+        if step % sample_rate != 0 and step > 0:
+          print ('.', end = '', flush = True)
+        else:
+
+          pred = generator (sample_input, training = False)
+
+          with summary_writer.as_default ():
+
+            metric = ((metric.__name__, metric (sample_target, pred) [0]) for metric in metrics)
+
+            tf.summary.image ('sample', [ (pred [0] + 1.0) / 2.0 ], step = step)
+
+            while True:
+
+              try:
+                name, value = next (metric)
+                tf.summary.scalar (name, value, step = step)
+              except StopIteration: break
+
+          print ('x', end = '', flush = True)
+
+    fit (dataset, 3333333, summary_writer = summary_writer)
