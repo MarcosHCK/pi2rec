@@ -16,6 +16,7 @@
 #
 from tensorflow.image import psnr
 from tensorflow.image import ssim
+from tensorflow import function
 from keras.saving import register_keras_serializable
 
 pic_width = 1024
@@ -26,6 +27,26 @@ if pic_width % 4 != 0:
 
 if pic_height % 4 != 0:
   raise Exception ('pic_width is not a power of 4')
+
+@function
+def normalize_from_256 (picture):
+
+  return (picture / 127.5) - 1
+
+@function
+def normalize_from_1 (picture):
+
+  return (picture * 2) - 1
+
+@function
+def denormalize_to_256 (picture):
+
+  return (picture + 1) * 127.5
+
+@function
+def denormalize_to_1 (picture):
+
+  return (picture + 1) / 2
 
 @register_keras_serializable ()
 def metric_psnr (y_true, y_pred):

@@ -14,6 +14,7 @@
 # You should have received a copy of the GNU General Public License
 # along with pi2rec. If not, see <http://www.gnu.org/licenses/>.
 #
+from common import denormalize_to_1
 from common import metric_psnr, metric_ssim
 from common import pic_width, pic_height
 from datetime import datetime
@@ -109,9 +110,9 @@ class Pi2REC ():
       begin = time.time ()
       cyclesz = len (dataset)
 
-      checkpoint_rate = cyclesz * 8
+      checkpoint_rate = cyclesz * 6
 
-      sample_rate = int (cyclesz / 4)
+      sample_rate = int (cyclesz / 2)
       sample_input, sample_target = next (iter (dataset.take (1)))
 
       for step, (image, target) in dataset.repeat ().take (steps).enumerate ():
@@ -124,14 +125,14 @@ class Pi2REC ():
 
         if step % checkpoint_rate == 0 and step > 0:
 
-          print ('Times for a checkpoint, right?')
+          print ('Time for a checkpoint, right?')
           checkpoint.save (file_prefix = checkpoint_prefix)
 
         try:
           fit_step (image, target, step, summary_writer)
         except KeyboardInterrupt:
 
-          print ('e')
+          print ('k')
           break
 
         if step % sample_rate != 0 and step > 0:
@@ -144,7 +145,7 @@ class Pi2REC ():
 
             metric = ((metric.__name__, metric (sample_target, pred) [0]) for metric in metrics)
 
-            tf.summary.image ('sample', [ (pred [0] + 1.0) / 2.0 ], step = step)
+            tf.summary.image ('sample', [ denormalize_to_1 (pred) ], step = step)
 
             while True:
 

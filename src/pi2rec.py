@@ -14,23 +14,13 @@
 # You should have received a copy of the GNU General Public License
 # along with pi2rec. If not, see <http://www.gnu.org/licenses/>.
 #
-from common import pic_width
-from common import pic_height
+from common import denormalize_to_256
+from common import normalize_from_256
+from common import pic_height, pic_width
 from dataset import Dataset, load
 from model import Pi2REC
 import argparse, io, keras, numpy, os
 import tensorflow as tf
-
-def take_sample (dataset, size, directory):
-
-  if not os.path.exists (directory):
-    os.mkdir (directory)
-  for i, (image, target) in enumerate (dataset.take (size)):
-
-    image = keras.preprocessing.image.array_to_img ((image * 127.0) + 127.0)
-    image.save (os.path.join (directory, f'input_{i}.jpg'))
-    image = keras.preprocessing.image.array_to_img ((target * 127.0) + 127.0)
-    image.save (os.path.join (directory, f'target_{i}.jpg'))
 
 def program ():
 
@@ -63,10 +53,10 @@ def program ():
 
     image = image.resize ((pic_width, pic_height))
     image = keras.preprocessing.image.img_to_array (image)
-    image = (image / 127.0) - 1.0
+    image = normalize_from_256 (image)
 
     image = model.predict (numpy.expand_dims (image, axis = 0)) [0]
-    image = (image + 1.0) * 127.0
+    image = denormalize_to_256 (image)
 
     image = keras.preprocessing.image.array_to_img (image)
     image = image.resize (shape)
@@ -83,9 +73,10 @@ def program ():
 
     for i, (image, target) in enumerate (dataset.take (args.sample_size)):
 
-      image = keras.preprocessing.image.array_to_img ((image + 1.0) * 127.0)
+      image = keras.preprocessing.image.array_to_img (denormalize_to_256 (image))
       image.save (os.path.join (args.sample_at, f'input_{i}.jpg'))
-      image = keras.preprocessing.image.array_to_img ((target + 1.0) * 127.0)
+
+      image = keras.preprocessing.image.array_to_img (denormalize_to_256 (target))
       image.save (os.path.join (args.sample_at, f'target_{i}.jpg'))
 
   elif args.train != None or args.freeze != None:

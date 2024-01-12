@@ -26,6 +26,7 @@ def paste (image, mask, x, y):
 
   off_x = tf.where (tf.greater_equal (x, 0), 0, -x)
   off_y = tf.where (tf.greater_equal (y, 0), 0, -y)
+
   x = tf.where (tf.less (x, 0), 0, x)
   y = tf.where (tf.less (y, 0), 0, y)
 

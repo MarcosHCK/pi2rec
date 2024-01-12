@@ -14,6 +14,7 @@
 # You should have received a copy of the GNU General Public License
 # along with pi2rec. If not, see <http://www.gnu.org/licenses/>.
 #
+from common import normalize_from_256
 from common import pic_height, pic_width
 from paste import paste
 from rotate import rotate
@@ -85,9 +86,9 @@ def blend (canvas, mask):
 def load (path):
 
   image = tf.io.read_file (path)
-  image = tf.image.decode_jpeg (image, channels = 3)
+  image = tf.io.decode_jpeg (image, channels = 3)
   image = tf.cast (image, dtype = tf.float32)
-  image = (image / 127.0) - 1.0
+  image = normalize_from_256 (image)
   image = tf.image.resize (image, [ pic_width, pic_height ])
   return image
 
@@ -108,7 +109,8 @@ def Dataset (root : str, mask_file : str = 'mask.svg', use_svg : bool = True) ->
     mask = Image.open (mask_file, mode = 'r')
     mask = mask.resize ((mask_width, mask_height))
     mask = keras.preprocessing.image.img_to_array (mask, dtype = numpy.float32)
-    mask = tf.constant ((mask / 127.0) - 1.0)
+    mask = normalize_from_256 (mask)
+    mask = tf.constant (mask)
   else:
 
     import cairosvg
@@ -118,7 +120,8 @@ def Dataset (root : str, mask_file : str = 'mask.svg', use_svg : bool = True) ->
 
     mask = Image.open (stream)
     mask = keras.preprocessing.image.img_to_array (mask, dtype = numpy.float32)
-    mask = tf.constant ((mask / 127.0) - 1.0)
+    mask = normalize_from_256 (mask)
+    mask = tf.constant (mask)
 
   images = tf.data.Dataset.list_files (os.path.join (root, '*.JPG'))
   images = images.map (lambda x: targetize (x, mask), num_parallel_calls = tf.data.AUTOTUNE)
