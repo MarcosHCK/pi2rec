@@ -14,6 +14,8 @@
 # You should have received a copy of the GNU General Public License
 # along with pi2rec. If not, see <http://www.gnu.org/licenses/>.
 #
+from common import denormalize_to_256
+from common import normalize_from_256
 import io, math
 import tensorflow as tf
 
@@ -27,7 +29,6 @@ from PIL import Image
 def rota (image, angle):
 
   image = image.numpy ()
-  angle = (angle * -360.0) * (2 * math.pi)
   stream = io.BytesIO (image)
 
   image = Image.open (stream)
@@ -40,14 +41,15 @@ def rota (image, angle):
 @tf.function
 def rotate (image, angle):
 
-  image = (image * 127.0) + 127.0
+  image = denormalize_to_256 (image)
   image = tf.cast (image, dtype = tf.uint8)
-  image = tf.image.encode_png (image)
+  image = tf.io.encode_png (image)
+  angle = angle * tf.constant (180 / math.pi)
 
-  image = tf.py_function (rota, [image, angle], tf.string)
+  image = tf.py_function (rota, [image, -angle], tf.string)
 
-  image = tf.image.decode_png (image, channels = 4)
+  image = tf.io.decode_png (image, channels = 4)
   image = tf.cast (image, dtype = tf.float32)
-  image = (image - 127.0) / 127.0
+  image = normalize_from_256 (image)
 
   return image

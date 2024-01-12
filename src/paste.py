@@ -26,6 +26,7 @@ def paste (image, mask, x, y):
 
   off_x = tf.where (tf.greater_equal (x, 0), 0, -x)
   off_y = tf.where (tf.greater_equal (y, 0), 0, -y)
+
   x = tf.where (tf.less (x, 0), 0, x)
   y = tf.where (tf.less (y, 0), 0, y)
 
@@ -38,12 +39,11 @@ def paste (image, mask, x, y):
   bound_y = tf.maximum (0, tf.minimum (mask_height - off_y, image_height - y))
   mask = mask [off_x : off_x + bound_x, off_y : off_y + bound_y, :]
 
-  pad_v = tf.constant (-1.0)
   pad_x = [ x, image_width - (x + bound_x) ]
   pad_y = [ y, image_height - (y + bound_y) ]
   pad = [ pad_x, pad_y, [0, 0] ]
 
-  mask = tf.pad (mask, pad, constant_values = pad_v, mode = 'CONSTANT')
+  mask = tf.pad (mask, pad, constant_values = -1, mode = 'CONSTANT')
   alpha = mask [:, :, 3:]
 
   #
@@ -62,7 +62,7 @@ def paste (image, mask, x, y):
   #
   # So the new formula is:
   #
-  #   R = ( (1 - 2A)I + (1 + 2A)M ) / 2
+  #   R = (2*A-1)*M + (1-A)*2*I + 1/2
   #
 
-  return ((1 - 2*alpha) * image + (1 + 2*alpha) * mask [:, :, :3]) / 2
+  return (2*alpha - 1) * mask [:, :, :3] + (1 - alpha) * 2 * image + 0.5

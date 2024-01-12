@@ -17,7 +17,7 @@
 import keras
 import tensorflow as tf
 
-units = 128
+units = 16
 
 def downsampler (filters, size, normalize = False):
 
