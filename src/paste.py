@@ -44,9 +44,7 @@ def paste (image, mask, x, y):
   pad = [ pad_x, pad_y, [0, 0] ]
 
   mask = tf.pad (mask, pad, constant_values = -1, mode = 'CONSTANT')
-
   alpha = mask [:, :, 3:]
-  colors = mask [:, :, :3]
 
   #
   # This is a derivation of the original alpha blending formula:
@@ -64,7 +62,7 @@ def paste (image, mask, x, y):
   #
   # So the new formula is:
   #
-  #   R = ( (1 - 2A)I + (1 + 2A)M ) / 2
+  #   R = (2*A-1)*M + (1-A)*2*I + 1/2
   #
 
-  return ((1 - 2*alpha) * image + (1 + 2*alpha) * colors) / 2
+  return (2*alpha - 1) * mask [:, :, :3] + (1 - alpha) * 2 * image + 0.5
