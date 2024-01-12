@@ -133,6 +133,7 @@ class Pi2REC ():
         except KeyboardInterrupt:
 
           print ('k')
+          checkpoint.save (file_prefix = checkpoint_prefix)
           break
 
         if step % sample_rate != 0 and step > 0:
