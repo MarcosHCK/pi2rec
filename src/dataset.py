@@ -27,7 +27,7 @@ mask_width = pic_width * (333.0 / 488.0)
 mask_height = pic_height * (87.0 / 406.0)
 
 @tf.function
-def ellipse (zeta : float, a : float, b : float) -> float:
+def ellipse (zeta, a, b):
 
   asin = (a ** 2) * (tf.sin (zeta) ** 2)
   bcos = (b ** 2) * (tf.cos (zeta) ** 2)
@@ -36,7 +36,7 @@ def ellipse (zeta : float, a : float, b : float) -> float:
   return (a * b) / root
 
 @tf.function
-def normal (minval : float = 0.0, maxval : float = 1.0) -> float:
+def normal (minval = 0.0, maxval = 1.0):
 
   mean = (minval + maxval) / 2
   stddev = (minval - maxval) / tf.constant (2 * 1.645)
@@ -44,7 +44,7 @@ def normal (minval : float = 0.0, maxval : float = 1.0) -> float:
   return tf.random.normal ((), dtype = tf.float32, mean = mean, stddev = stddev)
 
 @tf.function
-def uniform (minval : float = 0.0, maxval : float = 1.0) -> float:
+def uniform (minval = 0.0, maxval = 1.0):
 
   return tf.random.uniform ((), dtype = tf.float32, minval = minval, maxval = maxval)
 
@@ -61,24 +61,20 @@ def blend (canvas, mask):
   mask_x = tf.cast ((rho * tf.cos (zeta)) + (mask_width / 2), dtype = tf.int32)
   mask_y = tf.cast ((rho * tf.sin (zeta)) + (mask_height / 2), dtype = tf.int32)
 
-  mask_x = tf.cast (pic_width / 2 + 40, dtype = tf.int32)
-  mask_y = tf.cast (pic_height / 2, dtype = tf.int32)
-
   if mask_x > pic_width or mask_y > pic_height:
-
     return canvas
   else:
-
-    mask = rotate (mask, angle)
-    canvas = paste (canvas, mask, mask_x, mask_y)
-
-    return canvas
+    return paste (canvas, rotate (mask, angle), mask_x, mask_y)
 
 @tf.function
 def random_jitter (image):
 
-  image = tf.image.resize (image, [ pic_width + 32, pic_height + 32 ])
-  image = tf.image.random_crop (image, size = [pic_width, pic_height, 3])
+  addx = uniform (0, pic_width)
+  addy = uniform (0, pic_height)
+
+  image = tf.image.resize (image, [ pic_width + addx, pic_height + addy ],
+    method = tf.image.ResizeMethod.NEAREST_NEIGHBOR)
+  image = tf.image.random_crop (image, size = [ pic_width, pic_height, 3 ])
   image = tf.image.random_flip_left_right (image)
   image = tf.image.random_flip_up_down (image)
   return image
@@ -123,5 +119,5 @@ def Dataset (root : str, mask_file : str = 'mask.svg', use_svg : bool = True) ->
     return (before, after)
 
   images = tf.data.Dataset.list_files (os.path.join (root, '*.JPG'))
-  images = images.map (targetize, num_parallel_calls = 1)
+  images = images.map (targetize, num_parallel_calls = tf.data.AUTOTUNE)
   return images

@@ -145,7 +145,7 @@ class Pi2REC ():
 
             metric = ((metric.__name__, metric (sample_target, pred) [0]) for metric in metrics)
 
-            tf.summary.image ('sample', [ denormalize_to_1 (pred) ], step = step)
+            tf.summary.image ('sample', [ denormalize_to_1 (pred [0]) ], step = step)
 
             while True:
 
