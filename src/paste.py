@@ -39,13 +39,14 @@ def paste (image, mask, x, y):
   bound_y = tf.maximum (0, tf.minimum (mask_height - off_y, image_height - y))
   mask = mask [off_x : off_x + bound_x, off_y : off_y + bound_y, :]
 
-  pad_v = tf.constant (-1.0)
   pad_x = [ x, image_width - (x + bound_x) ]
   pad_y = [ y, image_height - (y + bound_y) ]
   pad = [ pad_x, pad_y, [0, 0] ]
 
-  mask = tf.pad (mask, pad, constant_values = pad_v, mode = 'CONSTANT')
+  mask = tf.pad (mask, pad, constant_values = -1, mode = 'CONSTANT')
+
   alpha = mask [:, :, 3:]
+  colors = mask [:, :, :3]
 
   #
   # This is a derivation of the original alpha blending formula:
@@ -66,4 +67,4 @@ def paste (image, mask, x, y):
   #   R = ( (1 - 2A)I + (1 + 2A)M ) / 2
   #
 
-  return ((1 - 2*alpha) * image + (1 + 2*alpha) * mask [:, :, :3]) / 2
+  return ((1 - 2*alpha) * image + (1 + 2*alpha) * colors) / 2
