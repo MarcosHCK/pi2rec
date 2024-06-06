@@ -17,10 +17,9 @@
 from common import denormalize_to_256
 from common import normalize_from_256
 from common import pic_height, pic_width
-from dataset import Dataset, load
+from dataset import Dataset
 from model import Pi2REC
-import argparse, io, keras, numpy, os
-import tensorflow as tf
+import argparse, keras, numpy, os
 
 def program ():
 
