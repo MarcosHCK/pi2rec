@@ -84,7 +84,7 @@ def program ():
 
     if args.freeze:
 
-      model.freeze (dataset)
+      model.freeze ()
       model.generator.save (args.model)
 
     else:

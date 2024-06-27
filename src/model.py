@@ -22,6 +22,7 @@ from discriminator import Discriminator, DiscriminatorLoss
 from generator import Generator, GeneratorLoss
 import keras, numpy, os, time
 import tensorflow as tf
+import sys
 
 class Pi2REC ():
 
@@ -129,12 +130,19 @@ class Pi2REC ():
           checkpoint.save (file_prefix = checkpoint_prefix)
 
         try:
+
           fit_step (image, target, step, summary_writer)
+
         except KeyboardInterrupt:
 
           print ('k')
           checkpoint.save (file_prefix = checkpoint_prefix)
           break
+
+        except Exception as e:
+
+          print (str (e.with_traceback ()), file = sys.stderr)
+          checkpoint.save (file_prefix = checkpoint_prefix)
 
         if step % sample_rate != 0 and step > 0:
           print ('.', end = '', flush = True)
