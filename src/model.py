@@ -165,5 +165,6 @@ class Pi2REC ():
       except Exception as e:
 
           print (str (e.with_traceback ()), file = sys.stderr)
+          checkpoint.save (file_prefix = checkpoint_prefix)
 
     fit (dataset, 3333333, summary_writer = summary_writer)
