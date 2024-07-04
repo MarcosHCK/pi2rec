@@ -19,8 +19,8 @@ from tensorflow.image import ssim
 from tensorflow import function
 from keras.saving import register_keras_serializable
 
-pic_width = 2048
-pic_height = 2048
+pic_width = 1024
+pic_height = 1024
 
 if pic_width % 4 != 0:
   raise Exception ('pic_width is not a power of 4')
