@@ -116,59 +116,54 @@ class Pi2REC ():
       sample_rate = int (cyclesz / 2)
       sample_input, sample_target = next (iter (dataset.take (1)))
 
-      while True:
+      try:
 
-        try:
+        for step, (image, target) in dataset.repeat ().take (steps).enumerate ():
 
-          enumerator = dataset.repeat ().take (steps).enumerate ()
-          break
+          if step % cyclesz == 0 and step > 0:
 
-        except Exception as e:
+            print (f'')
+            print (f'Time taken for {cyclesz} steps: {time.time () - begin} seconds')
+            begin = time.time ()
+
+          if step % checkpoint_rate == 0 and step > 0:
+
+            print ('Time for a checkpoint, right?')
+            checkpoint.save (file_prefix = checkpoint_prefix)
+
+          try:
+
+            fit_step (image, target, step, summary_writer)
+
+          except KeyboardInterrupt:
+
+            print ('k')
+            checkpoint.save (file_prefix = checkpoint_prefix)
+            break
+
+          if step % sample_rate != 0 and step > 0:
+            print ('.', end = '', flush = True)
+          else:
+
+            pred = generator (sample_input, training = False)
+
+            with summary_writer.as_default ():
+
+              metric = ((metric.__name__, metric (sample_target, pred) [0]) for metric in metrics)
+
+              tf.summary.image ('sample', [ denormalize_to_1 (pred [0]) ], step = step)
+
+              while True:
+
+                try:
+                  name, value = next (metric)
+                  tf.summary.scalar (name, value, step = step)
+                except StopIteration: break
+
+            print ('x', end = '', flush = True)
+
+      except Exception as e:
 
           print (str (e.with_traceback ()), file = sys.stderr)
-
-      for step, (image, target) in enumerator:
-
-        if step % cyclesz == 0 and step > 0:
-
-          print (f'')
-          print (f'Time taken for {cyclesz} steps: {time.time () - begin} seconds')
-          begin = time.time ()
-
-        if step % checkpoint_rate == 0 and step > 0:
-
-          print ('Time for a checkpoint, right?')
-          checkpoint.save (file_prefix = checkpoint_prefix)
-
-        try:
-
-          fit_step (image, target, step, summary_writer)
-
-        except KeyboardInterrupt:
-
-          print ('k')
-          checkpoint.save (file_prefix = checkpoint_prefix)
-          break
-
-        if step % sample_rate != 0 and step > 0:
-          print ('.', end = '', flush = True)
-        else:
-
-          pred = generator (sample_input, training = False)
-
-          with summary_writer.as_default ():
-
-            metric = ((metric.__name__, metric (sample_target, pred) [0]) for metric in metrics)
-
-            tf.summary.image ('sample', [ denormalize_to_1 (pred [0]) ], step = step)
-
-            while True:
-
-              try:
-                name, value = next (metric)
-                tf.summary.scalar (name, value, step = step)
-              except StopIteration: break
-
-          print ('x', end = '', flush = True)
 
     fit (dataset, 3333333, summary_writer = summary_writer)
