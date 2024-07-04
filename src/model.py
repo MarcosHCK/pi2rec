@@ -116,7 +116,18 @@ class Pi2REC ():
       sample_rate = int (cyclesz / 2)
       sample_input, sample_target = next (iter (dataset.take (1)))
 
-      for step, (image, target) in dataset.repeat ().take (steps).enumerate ():
+      while True:
+
+        try:
+
+          enumerator = dataset.repeat ().take (steps).enumerate ()
+          break
+
+        except Exception as e:
+
+          print (str (e.with_traceback ()), file = sys.stderr)
+
+      for step, (image, target) in enumerator:
 
         if step % cyclesz == 0 and step > 0:
 
@@ -138,11 +149,6 @@ class Pi2REC ():
           print ('k')
           checkpoint.save (file_prefix = checkpoint_prefix)
           break
-
-        except Exception as e:
-
-          print (str (e.with_traceback ()), file = sys.stderr)
-          checkpoint.save (file_prefix = checkpoint_prefix)
 
         if step % sample_rate != 0 and step > 0:
           print ('.', end = '', flush = True)
