@@ -90,7 +90,7 @@ def load (path):
   image = random_jitter (image)
   return image
 
-def Dataset (root : str, mask_file : str = 'mask.svg', use_svg : bool = True) -> "DatasetV2":
+def Dataset (root : str, mask_file : str = 'mask.svg', use_svg : bool = True) -> "tf.data.Dataset":
 
   if not use_svg:
 

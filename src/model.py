@@ -43,7 +43,7 @@ class Pi2REC ():
       checkpoint = tf.train.Checkpoint (discriminator = self.discriminator, generator = self.generator)
       checkpoint.restore (latest)
 
-  def train (self, dataset : "DatasetV2", log_dir : str = 'logs/'):
+  def train (self, dataset : "tf.data.Dataset", log_dir : str = 'logs/'):
 
     checkpoint_dir = self.checkpoint_dir
     checkpoint_prefix = self.checkpoint_prefix
@@ -106,7 +106,7 @@ class Pi2REC ():
         tf.summary.scalar ('loss_l1', loss_l1, step = n)
         tf.summary.scalar ('loss_disc', loss_disc, step = n)
 
-    def fit (dataset : "DatasetV2", steps : int, summary_writer : tf.summary.SummaryWriter):
+    def fit (dataset : "tf.data.Dataset", steps : int, summary_writer : tf.summary.SummaryWriter):
 
       begin = time.time ()
       cyclesz = len (dataset)
