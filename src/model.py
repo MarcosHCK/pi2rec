@@ -20,9 +20,8 @@ from common import pic_width, pic_height
 from datetime import datetime
 from discriminator import Discriminator, DiscriminatorLoss
 from generator import Generator, GeneratorLoss
-import keras, numpy, os, time
+import keras, os, time
 import tensorflow as tf
-import sys
 
 class Pi2REC ():
 
@@ -164,7 +163,9 @@ class Pi2REC ():
 
       except Exception as e:
 
-          print (str (e.with_traceback ()), file = sys.stderr)
-          checkpoint.save (file_prefix = checkpoint_prefix)
+        checkpoint.save (file_prefix = checkpoint_prefix)
+        print ('e', end = '', flush = True)
+        print ('')
+        raise e
 
     fit (dataset, 3333333, summary_writer = summary_writer)

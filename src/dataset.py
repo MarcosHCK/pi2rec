@@ -61,7 +61,8 @@ def blend (canvas, mask):
   mask_x = tf.cast ((rho * tf.cos (zeta)) + (mask_width / 2), dtype = tf.int32)
   mask_y = tf.cast ((rho * tf.sin (zeta)) + (mask_height / 2), dtype = tf.int32)
 
-  if mask_x > pic_width or mask_y > pic_height:
+  if mask_x >= pic_width or mask_y >= pic_height:
+
     return canvas
   else:
     return paste (canvas, rotate (mask, angle), mask_x, mask_y)
