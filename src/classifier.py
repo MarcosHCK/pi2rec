@@ -100,23 +100,31 @@ class Classifier:
       checkpoint_rate = cyclesz * 6
       sample_rate = int (cyclesz / 2)
 
+      for (_, __) in train.take (1):
+
+        batchsz = len (_)
+        break
+
       for step, (image, target) in train.repeat ().take (steps).enumerate ():
 
-        if step % cyclesz == 0 and step > 0:
+        if step % cyclesz == 0:
 
-          print (f'')
-          print (f'Time taken for {cyclesz} steps: {time.time () - begin} seconds')
+          if step > 0:
+
+            print (f'')
+            print (f'Time taken for {cyclesz} steps: {time.time () - begin} seconds')
+
           begin = time.time ()
 
-        if step % checkpoint_rate == 0 and step > 0:
+        if (1 + step) % checkpoint_rate == 0:
 
           print ('Time for a checkpoint, right?')
           checkpoint.save (file_prefix = checkpoint_prefix)
 
-        fit_step (image, numpy.array ([[ 1 ]]), step)
-        fit_step (target, numpy.array ([[ 0 ]]), step)
+        fit_step (image, numpy.array ([[ 1 ]] * batchsz), step)
+        fit_step (target, numpy.array ([[ 0 ]] * batchsz), step)
 
-        if step % sample_rate != 0 and step > 0:
+        if (1 + step) % sample_rate != 0:
 
           print ('.', end = '', flush = True)
         else:
