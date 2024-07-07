@@ -110,7 +110,7 @@ class Pi2REC ():
       begin = time.time ()
       cyclesz = len (dataset)
 
-      checkpoint_rate = cyclesz * 16
+      checkpoint_rate = cyclesz * 8
 
       sample_rate = int (cyclesz / 2)
       sample_input, sample_target = next (iter (dataset.take (1)))
