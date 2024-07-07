@@ -14,12 +14,8 @@
 # You should have received a copy of the GNU General Public License
 # along with pi2rec. If not, see <http://www.gnu.org/licenses/>.
 #
-from common import denormalize_to_256
-from common import normalize_from_256
-from common import pic_height, pic_width
-from model import Pi2REC
 from pathlib import Path
-import argparse, keras, numpy, os
+import argparse, os
 
 def load_dataset (root: str, mask: str, use_svg: bool):
 
@@ -63,6 +59,11 @@ def program ():
 
   if args.process != None:
 
+    from common import denormalize_to_256
+    from common import normalize_from_256
+    from common import pic_height, pic_width
+    import keras, numpy
+
     model = keras.models.load_model (args.model)
     image = keras.preprocessing.image.load_img (args.process)
     shape = (image.width, image.height)
@@ -81,6 +82,9 @@ def program ():
 
   elif args.sample != None:
 
+    from common import denormalize_to_256
+    import keras
+
     test, _ = load_dataset (args.sample, args.mask, args.use_svg)
     at = Path (args.sample_at)
 
@@ -97,6 +101,8 @@ def program ():
       image.save (str (at / f'target_{i}.jpg'))
 
   elif args.train != None or args.freeze:
+
+    from model import Pi2REC
 
     model = Pi2REC (args.checkpoint_dir, args.checkpoint_prefix, args.log_dir)
 
