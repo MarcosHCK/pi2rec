@@ -92,7 +92,7 @@ def program ():
       dataset = Dataset (args.train, args.mask, args.use_svg)
 
       dataset = dataset.shuffle (400)
-      dataset = dataset.batch (1)
+      dataset = dataset.batch (32)
 
       model.train (dataset, args.log_dir)
       model.generator.save (args.model)
