@@ -75,30 +75,40 @@ def blend (canvas, mask):
   return paste (canvas, rotate (mask, angle), mask_x, mask_y)
 
 @tf.function
-def random_jitter (image):
+def cropseed ():
+
+  return tf.random.uniform (shape = (2,), maxval = tf.int32.max, minval = tf.int32.min, dtype = tf.int32)
+
+@tf.function
+def random_jitter (image1, image2):
 
   addx = uniform (0, pic_width)
   addy = uniform (0, pic_height)
+  seed = cropseed ()
 
-  image = tf.image.resize (image, [ pic_width + addx, pic_height + addy ],
-    method = tf.image.ResizeMethod.NEAREST_NEIGHBOR)
-  image = tf.image.random_crop (image, size = [ pic_width, pic_height, 3 ])
-  image = tf.image.random_flip_left_right (image)
-  image = tf.image.random_flip_up_down (image)
-  return image
+  image1 = tf.image.resize (image1, [ pic_width + addx, pic_height + addy ], method = tf.image.ResizeMethod.NEAREST_NEIGHBOR)
+  image2 = tf.image.resize (image2, [ pic_width + addx, pic_height + addy ], method = tf.image.ResizeMethod.NEAREST_NEIGHBOR)
+  image1 = tf.image.stateless_random_crop (image1, seed = seed, size = (pic_width, pic_height, 3))
+  image2 = tf.image.stateless_random_crop (image2, seed = seed, size = (pic_width, pic_height, 3))
+
+  if tf.random.uniform (()) > 0.5:
+
+    image1 = tf.image.flip_left_right (image1)
+    image1 = tf.image.flip_left_right (image2)
+
+  return image1, image2
 
 @tf.function
 def load (path):
 
   image = tf.io.read_file (path)
   image = tf.io.decode_jpeg (image, channels = 3)
+  image = tf.image.resize (image, [ pic_width, pic_height ])
   image = tf.cast (image, dtype = tf.float32)
   image = normalize_from_256 (image)
-  image = tf.image.resize (image, [ pic_width, pic_height ])
-  image = random_jitter (image)
   return image
 
-def Dataset (root: str, mask_file: str = 'mask.svg', use_svg: bool = True) -> "tf.data.Dataset":
+def Dataset (root: str, mask_file: str = 'mask.svg', use_svg: bool = True, use_jitter: bool = True) -> "tf.data.Dataset":
 
   if not use_svg:
 
@@ -124,6 +134,11 @@ def Dataset (root: str, mask_file: str = 'mask.svg', use_svg: bool = True) -> "t
 
     after = load (path)
     before = blend (after, mask)
+
+    if use_jitter:
+
+      after, before = random_jitter (after, before)
+
     return (before, after)
 
   images = tf.data.Dataset.list_files (os.path.join (root, '*.JPG'))

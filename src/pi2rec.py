@@ -26,11 +26,11 @@ def load_dataset (root: str, mask: str, use_svg: bool):
 
   if os.path.exists (train_dir := str (root / 'train/')) and os.path.exists (test_dir := str (root / 'test/')):
 
-    test = Dataset (test_dir, mask, use_svg)
-    train = Dataset (train_dir, mask, use_svg)
+    test = Dataset (test_dir, mask, use_svg = use_svg, use_jitter = False)
+    train = Dataset (train_dir, mask, use_svg = use_svg, use_jitter = True)
   else:
-    test = Dataset (str (root), mask, use_svg)
-    train = Dataset (str (root), mask, use_svg)
+    test = Dataset (str (root), mask, use_svg = use_svg, use_jitter = False)
+    train = Dataset (str (root), mask, use_svg = use_svg, use_jitter = True)
 
   return test, train
 
