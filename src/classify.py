@@ -70,7 +70,7 @@ def program ():
 
       test = test.batch (1)
       train = train.shuffle (400)
-      train = train.batch (4)
+      train = train.batch (4, drop_remainder = True)
 
       model.train (train, test, 3333333)
       model.classifier.save (args.model)
