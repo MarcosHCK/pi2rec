@@ -17,16 +17,15 @@
 import keras
 import tensorflow as tf
 
-units = 128
+units = 64
 
-def downsampler (filters, size, normalize = False):
+def downsampler (filters, size, normalize = True):
 
   initzr = keras.initializers.RandomNormal (mean = 0.0, stddev = 0.02)
   result = keras.models.Sequential ()
 
   if True:
-    result.add (keras.layers.Conv2D (filters, size, strides = 2, padding = 'same',
-      kernel_initializer = initzr, use_bias = False))
+    result.add (keras.layers.Conv2D (filters, size, strides = 2, padding = 'same', kernel_initializer = initzr, use_bias = False))
   if normalize:
     result.add (keras.layers.BatchNormalization ())
 
@@ -39,8 +38,7 @@ def upsampler (filters, size, dropout = False):
   result = keras.models.Sequential ()
 
   if True:
-    result.add (keras.layers.Conv2DTranspose (filters, size, strides = 2, padding = 'same',
-      kernel_initializer = initzr, use_bias = False))
+    result.add (keras.layers.Conv2DTranspose (filters, size, strides = 2, padding = 'same', kernel_initializer = initzr, use_bias = False))
     result.add (keras.layers.BatchNormalization ())
   if dropout:
     result.add (keras.layers.Dropout (0.5))
@@ -50,18 +48,20 @@ def upsampler (filters, size, dropout = False):
 
 def Generator (pic_width, pic_height, channels):
 
-  downstack = [
-      downsampler (units * 1, 4, normalize = True),
-      downsampler (units * 2, 4, normalize = False),
-      downsampler (units * 4, 4, normalize = False),
-      downsampler (units * 8, 4, normalize = False),
-      downsampler (units * 8, 4, normalize = False),
-      downsampler (units * 8, 4, normalize = False),
-      downsampler (units * 8, 4, normalize = False),
-      downsampler (units * 8, 4, normalize = False),
+  downstack = \
+    [
+      downsampler (units * 1, 4, normalize = False),
+      downsampler (units * 2, 4, normalize = True),
+      downsampler (units * 4, 4, normalize = True),
+      downsampler (units * 8, 4, normalize = True),
+      downsampler (units * 8, 4, normalize = True),
+      downsampler (units * 8, 4, normalize = True),
+      downsampler (units * 8, 4, normalize = True),
+      downsampler (units * 8, 4, normalize = True),
     ]
 
-  upstack = [
+  upstack = \
+    [
       upsampler (units * 8, 4, dropout = True),
       upsampler (units * 8, 4, dropout = True),
       upsampler (units * 8, 4, dropout = True),
@@ -73,8 +73,7 @@ def Generator (pic_width, pic_height, channels):
 
   initzr = keras.initializers.RandomNormal (mean = 0.0, stddev = 0.02)
   inputs = keras.layers.Input (shape = [ pic_width, pic_height, channels ])
-  last = keras.layers.Conv2DTranspose (channels, 4, strides = 2, padding = 'same',
-    kernel_initializer = initzr, activation = 'tanh')
+  last = keras.layers.Conv2DTranspose (channels, 4, strides = 2, padding = 'same', kernel_initializer = initzr, activation = 'tanh')
 
   x = inputs
   skips = []
@@ -95,11 +94,11 @@ def Generator (pic_width, pic_height, channels):
 
   return keras.Model (inputs = inputs, outputs = x)
 
-def GeneratorLoss ():
+def GeneratorLoss (lambda_: float = 100):
 
-  lambda_ = 100
   cross_entropy = keras.losses.BinaryCrossentropy (from_logits = True)
 
+  @tf.function
   def loss (y_disc, y_pred, y_true):
 
     loss1 = cross_entropy (tf.ones_like (y_disc), y_disc)

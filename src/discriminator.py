@@ -23,13 +23,13 @@ def Discriminator (pic_width, pic_height, channels):
   initzr1 = keras.initializers.RandomNormal (mean = 0.0, stddev = 0.02)
   initzr2 = keras.initializers.RandomNormal (mean = 0.0, stddev = 0.02)
 
-  inputs_true = keras.layers.Input (shape = [pic_width, pic_height, channels], name = 'y_true')
-  inputs_pred = keras.layers.Input (shape = [pic_width, pic_height, channels], name = 'y_pred')
-  x = keras.layers.concatenate ([ inputs_true, inputs_pred ])
+  inputs_disc = keras.layers.Input (shape = [ pic_width, pic_height, channels ], name = 'y_disc')
+  inputs_true = keras.layers.Input (shape = [ pic_width, pic_height, channels ], name = 'y_true')
+  x = keras.layers.concatenate ([ inputs_disc, inputs_true ])
 
   down1 = downsampler (units * 1, 4, normalize = False) (x)
-  down2 = downsampler (units * 2, 4, normalize = False) (down1)
-  down3 = downsampler (units * 4, 4, normalize = False) (down2)
+  down2 = downsampler (units * 2, 4, normalize = True) (down1)
+  down3 = downsampler (units * 4, 4, normalize = True) (down2)
 
   zeropad1 = keras.layers.ZeroPadding2D () (down3)
   conv = keras.layers.Conv2D (units * 8, 4, strides = 1, kernel_initializer = initzr1, use_bias = False) (zeropad1)
@@ -38,12 +38,13 @@ def Discriminator (pic_width, pic_height, channels):
   zeropad2 = keras.layers.ZeroPadding2D () (activation)
   last = keras.layers.Conv2D (1, 4, strides = 1, kernel_initializer = initzr2) (zeropad2)
 
-  return keras.Model (inputs = [ inputs_true, inputs_pred ], outputs = last)
+  return keras.Model (inputs = [ inputs_disc, inputs_true ], outputs = last)
 
 def DiscriminatorLoss ():
 
   cross_entropy = keras.losses.BinaryCrossentropy (from_logits = True)
 
+  @tf.function
   def loss (y_true, y_disc):
 
     loss1 = cross_entropy (tf.ones_like (y_true), y_true)

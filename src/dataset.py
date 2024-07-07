@@ -54,18 +54,25 @@ def blend (canvas, mask):
   angle_cone = tf.constant (a_cone)
   pi_2 = tf.constant (math.pi / 2)
 
-  zeta = uniform (0, tf.constant (2 * math.pi))
-  rho = normal (0, ellipse (zeta, pic_width, pic_height))
-  angle = normal (zeta - angle_cone, zeta + angle_cone) - pi_2
+  angle = tf.constant (0.)
+  mask_x = tf.constant (pic_width, dtype = tf.float32)
+  mask_y = tf.constant (pic_height, dtype = tf.float32)
 
-  mask_x = tf.cast ((rho * tf.cos (zeta)) + (mask_width / 2), dtype = tf.int32)
-  mask_y = tf.cast ((rho * tf.sin (zeta)) + (mask_height / 2), dtype = tf.int32)
+  while mask_x >= pic_width or mask_y >= pic_height or \
+    (mask_width * tf.cos (angle) + mask_height * tf.sin (angle) + mask_x) <= pic_width * .5 or \
+    (mask_height * tf.cos (angle) + mask_width * tf.sin (angle) + mask_y) <= pic_height * .5:
 
-  if mask_x >= pic_width or mask_y >= pic_height:
+    zeta = uniform (0, tf.constant (2 * math.pi))
+    rho = normal (0, ellipse (zeta, pic_width, pic_height))
+    angle = normal (zeta - angle_cone, zeta + angle_cone) - pi_2
 
-    return canvas
-  else:
-    return paste (canvas, rotate (mask, angle), mask_x, mask_y)
+    mask_x = (rho * tf.cos (zeta)) + (mask_width / 2)
+    mask_y = (rho * tf.sin (zeta)) + (mask_height / 2)
+
+  mask_x = tf.cast (mask_x, dtype = tf.int32)
+  mask_y = tf.cast (mask_y, dtype = tf.int32)
+
+  return paste (canvas, rotate (mask, angle), mask_x, mask_y)
 
 @tf.function
 def random_jitter (image):
@@ -91,7 +98,7 @@ def load (path):
   image = random_jitter (image)
   return image
 
-def Dataset (root : str, mask_file : str = 'mask.svg', use_svg : bool = True) -> "tf.data.Dataset":
+def Dataset (root: str, mask_file: str = 'mask.svg', use_svg: bool = True) -> "tf.data.Dataset":
 
   if not use_svg:
 

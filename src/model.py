@@ -25,13 +25,14 @@ import tensorflow as tf
 
 class Pi2REC ():
 
-  def __init__ (self, checkpoint_dir = 'checkpoints/', checkpoint_prefix = 'ckp'):
+  def __init__ (self, checkpoint_dir: str = 'checkpoints/', checkpoint_prefix: str = 'ckp', log_dir: str = 'logs/'):
 
     self.discriminator = Discriminator (pic_width, pic_height, channels = 3)
     self.generator = Generator (pic_width, pic_height, channels = 3)
     
     self.checkpoint_dir = checkpoint_dir
     self.checkpoint_prefix = os.path.join (checkpoint_dir, checkpoint_prefix)
+    self.log_dir = log_dir
 
   def freeze (self):
 
@@ -42,7 +43,7 @@ class Pi2REC ():
       checkpoint = tf.train.Checkpoint (discriminator = self.discriminator, generator = self.generator)
       checkpoint.restore (latest)
 
-  def train (self, dataset : "tf.data.Dataset", log_dir : str = 'logs/'):
+  def train (self, train: "tf.data.Dataset", test: "tf.data.Dataset", steps : int, cyclesz: int = -1):
 
     checkpoint_dir = self.checkpoint_dir
     checkpoint_prefix = self.checkpoint_prefix
@@ -56,7 +57,7 @@ class Pi2REC ():
     generator_optimizer = keras.optimizers.Adam (2e-4, beta_1 = 0.5)
 
     log_name = datetime.now ().strftime ('%Y%m%d-%H%M%S')
-    log_name = os.path.join (log_dir, log_name)
+    log_name = os.path.join (self.log_dir, log_name)
 
     checkpoint = tf.train.Checkpoint (
       discriminator_optimizer = discriminator_optimizer,
@@ -64,7 +65,7 @@ class Pi2REC ():
       discriminator = discriminator,
       generator = generator)
 
-    metrics = [ metric_psnr, metric_ssim ]
+    metrics = { 'psnr' : metric_psnr, 'ssim' : metric_ssim }
 
     summary_writer = tf.summary.create_file_writer (log_name)
 
@@ -72,16 +73,12 @@ class Pi2REC ():
 
       os.makedirs (checkpoint_dir)
 
-    else:
+    elif (latest := tf.train.latest_checkpoint (checkpoint_dir)) != None:
 
-      latest = tf.train.latest_checkpoint (checkpoint_dir)
-
-      if latest != None:
-
-        checkpoint.restore (latest)
+      checkpoint.restore (latest)
 
     @tf.function
-    def fit_step (input_image, target, n, summary_writer):
+    def fit_step (input_image, target, n):
 
       with tf.GradientTape () as gen_tape, tf.GradientTape () as dis_tape:
 
@@ -105,67 +102,60 @@ class Pi2REC ():
         tf.summary.scalar ('loss_l1', loss_l1, step = n)
         tf.summary.scalar ('loss_disc', loss_disc, step = n)
 
-    def fit (dataset : "tf.data.Dataset", steps : int, summary_writer : tf.summary.SummaryWriter):
+    def fit (train: "tf.data.Dataset", test: "tf.data.Dataset", steps : int, cyclesz: int = -1):
 
       begin = time.time ()
-      cyclesz = len (dataset)
+      cyclesz = cyclesz if cyclesz > 0 else len (train)
 
       checkpoint_rate = cyclesz * 8
 
-      sample_rate = int (cyclesz / 2)
-      sample_input, sample_target = next (iter (dataset.take (1)))
+      sample_rate = cyclesz // 2
+      sample_input, sample_target = next (iter (test.take (1)))
 
-      try:
+      with summary_writer.as_default ():
 
-        for step, (image, target) in dataset.repeat ().take (steps).enumerate ():
+        tf.summary.image ('sample', [ denormalize_to_1 (sample_input [0]) ], step = 0)
 
-          if step % cyclesz == 0 and step > 0:
+      for step, (image, target) in train.repeat ().take (steps).enumerate ():
+
+        if step % cyclesz == 0:
+
+          if step > 0:
 
             print (f'')
-            print (f'Time taken for {cyclesz} steps: {time.time () - begin} seconds')
-            begin = time.time ()
+            print (f'Time taken for {cyclesz} steps: {time.time () - begin:.2f} seconds')
 
-          if step % checkpoint_rate == 0 and step > 0:
+          begin = time.time ()
 
-            print ('Time for a checkpoint, right?')
-            checkpoint.save (file_prefix = checkpoint_prefix)
+        if (1 + step) % checkpoint_rate == 0 and step > 0:
 
-          try:
+          print ('Time for a checkpoint, right?')
+          checkpoint.save (file_prefix = checkpoint_prefix)
 
-            fit_step (image, target, step, summary_writer)
+        fit_step (image, target, step)
 
-          except KeyboardInterrupt:
+        if (1 + step) % sample_rate != 0:
 
-            print ('k')
-            checkpoint.save (file_prefix = checkpoint_prefix)
-            break
+          print ('.', end = '', flush = True)
+        else:
 
-          if step % sample_rate != 0 and step > 0:
-            print ('.', end = '', flush = True)
-          else:
+          pred = generator (sample_input, training = False)
 
-            pred = generator (sample_input, training = False)
+          with summary_writer.as_default ():
 
-            with summary_writer.as_default ():
+            tf.summary.image ('sample', [ denormalize_to_1 (pred [0]) ], step = step)
 
-              metric = ((metric.__name__, metric (sample_target, pred) [0]) for metric in metrics)
+            for name, value in [ (name, func (sample_target, pred) [0]) for name, func in metrics.items () ]:
 
-              tf.summary.image ('sample', [ denormalize_to_1 (pred [0]) ], step = step)
+              tf.summary.scalar (name, value, step = step)
 
-              while True:
+          print ('x', end = '', flush = True)
 
-                try:
-                  name, value = next (metric)
-                  tf.summary.scalar (name, value, step = step)
-                except StopIteration: break
+    try:
 
-            print ('x', end = '', flush = True)
+      fit (train, test, steps, cyclesz)
 
-      except Exception as e:
+    except KeyboardInterrupt:
 
-        checkpoint.save (file_prefix = checkpoint_prefix)
-        print ('e', end = '', flush = True)
-        print ('')
-        raise e
-
-    fit (dataset, 3333333, summary_writer = summary_writer)
+      print ('k')
+      checkpoint.save (file_prefix = checkpoint_prefix)

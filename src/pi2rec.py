@@ -17,9 +17,26 @@
 from common import denormalize_to_256
 from common import normalize_from_256
 from common import pic_height, pic_width
-from dataset import Dataset
 from model import Pi2REC
+from pathlib import Path
 import argparse, keras, numpy, os
+
+def load_dataset (root: str, mask: str, use_svg: bool):
+
+  from dataset import Dataset
+
+  root = Path (root)
+  mask = str (Path (mask))
+
+  if os.path.exists (train_dir := str (root / 'train/')) and os.path.exists (test_dir := str (root / 'test/')):
+
+    test = Dataset (test_dir, mask, use_svg)
+    train = Dataset (train_dir, mask, use_svg)
+  else:
+    test = Dataset (str (root), mask, use_svg)
+    train = Dataset (str (root), mask, use_svg)
+
+  return test, train
 
 def program ():
 
@@ -64,23 +81,24 @@ def program ():
 
   elif args.sample != None:
 
-    dataset = Dataset (args.sample, args.mask, args.use_svg)
+    test, _ = load_dataset (args.sample, args.mask, args.use_svg)
+    at = Path (args.sample_at)
 
-    if not os.path.exists (args.sample_at):
+    if not os.path.exists (str (at)):
 
-      os.mkdir (args.sample_at)
+      os.mkdir (str (at))
 
-    for i, (image, target) in enumerate (dataset.take (args.sample_size)):
+    for i, (image, target) in enumerate (test.repeat ().take (args.sample_size)):
 
       image = keras.preprocessing.image.array_to_img (denormalize_to_256 (image))
-      image.save (os.path.join (args.sample_at, f'input_{i}.jpg'))
+      image.save (str (at / f'input_{i}.jpg'))
 
       image = keras.preprocessing.image.array_to_img (denormalize_to_256 (target))
-      image.save (os.path.join (args.sample_at, f'target_{i}.jpg'))
+      image.save (str (at / f'target_{i}.jpg'))
 
-  elif args.train != None or args.freeze != None:
+  elif args.train != None or args.freeze:
 
-    model = Pi2REC (args.checkpoint_dir, args.checkpoint_prefix)
+    model = Pi2REC (args.checkpoint_dir, args.checkpoint_prefix, args.log_dir)
 
     if args.freeze:
 
@@ -89,12 +107,13 @@ def program ():
 
     else:
 
-      dataset = Dataset (args.train, args.mask, args.use_svg)
+      test, train = load_dataset (args.train, args.mask, args.use_svg)
 
-      dataset = dataset.shuffle (400)
-      dataset = dataset.batch (32)
+      test = test.batch (1)
+      train = train.shuffle (400)
+      train = train.batch (1)
 
-      model.train (dataset, args.log_dir)
+      model.train (train, test, 3333333)
       model.generator.save (args.model)
 
 program ()
