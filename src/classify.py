@@ -16,20 +16,36 @@
 #
 import argparse
 
+batch_size = 16
+epochs = 25
+
+def Classifier ():
+
+  from common import pic_height, pic_width
+  import keras
+
+  model = keras.Sequential \
+    ([
+      keras.layers.Conv2D (32, (3, 3), padding = 'same', activation = 'relu', input_shape = (pic_height, pic_width, 3)),
+      keras.layers.MaxPooling2D ((2, 2), strides = 2),
+      keras.layers.Conv2D (32, (3, 3), padding = 'same', activation = 'relu'),
+      keras.layers.MaxPooling2D ((2, 2), strides = 2),
+      keras.layers.Dropout (0.5),
+      keras.layers.Flatten (),
+      keras.layers.Dense (128, activation = 'relu'),
+      keras.layers.Dense (2, activation = 'softmax'),
+    ])
+
+  return model
+
 def program ():
 
   parser = argparse.ArgumentParser ('py2rec_classify')
 
   # Options
-  parser.add_argument ('--checkpoint-dir', default = 'checkpoints/', help = 'checkpoint\'s root directory', metavar = 'DIRECTORY', type = str)
-  parser.add_argument ('--checkpoint-prefix', default = 'chkp', help = 'checkpoint\'s prefix', metavar = 'VALUE', type = str)
-  parser.add_argument ('--log-dir', default = 'logs/', help = 'place logs at DIRECTORY', metavar = 'DIRECTORY', type = str)
-  parser.add_argument ('--mask', default = 'mask.svg', help = 'use mask FILE', metavar  = 'FILE', type = str)
-  parser.add_argument ('--model', default = 'pi2rec.keras', help = 'use serialized model FILE', metavar = 'FILE', type = str)
-  parser.add_argument ('--use-svg', default = True, help = 'use SVG masks (needs CairoSVG)', metavar = '<Y/N>', type = bool)
+  parser.add_argument ('--model', default = 'pi2rec_classifier.keras', help = 'use serialized model FILE', metavar = 'FILE', type = str)
 
   # Subsystems
-  parser.add_argument ('--freeze', help = 'use Pi2REC model to process FILE', action = 'store_true')
   parser.add_argument ('--process', help = 'use Pi2REC model to process FILE', metavar  = 'FILE', type = str)
   parser.add_argument ('--train', help = 'train using dataset at DIRECTORY', metavar = 'DIRECTORY', type = str)
 
@@ -37,43 +53,57 @@ def program ():
 
   if args.process != None:
 
-    from common import normalize_from_256
-    from common import pic_height, pic_width
-    import keras, numpy
+    from dataset import load
+    import keras
 
     model = keras.models.load_model (args.model)
-    image = keras.preprocessing.image.load_img (args.process)
+    image = load (args.process)
+    score = model.predict (image)
 
-    image = image.resize ((pic_width, pic_height))
-    image = keras.preprocessing.image.img_to_array (image)
-    image = normalize_from_256 (image)
+    print (f'score: {score:.02f}')
 
-    score = model.predict (numpy.expand_dims (image, axis = 0)) [0]
+  elif args.train != None:
 
-    print (f'score: {score [0]:.4f}')
+    from common import pic_height, pic_width
+    from pathlib import Path
+    from sklearn.model_selection import train_test_split
+    import numpy as np
+    import keras, os, random
+    import tensorflow as tf
 
-  elif args.train != None or args.freeze:
+    CATEGORIES = [ 'with_rule', 'without_rule' ]
 
-    from classifier import Classifier
-    from pi2rec import load_dataset
+    model = Classifier ()
 
-    model = Classifier (args.checkpoint_dir, args.checkpoint_prefix, args.log_dir)
+    def load (path: str):
 
-    if args.freeze:
+      image = tf.io.read_file (path)
+      image = tf.io.decode_jpeg (image, channels = 3)
+      image = tf.image.resize (image, [ pic_width, pic_height ])
+      image = tf.cast (image, dtype = tf.float32)
 
-      model.freeze ()
-      model.classifier.save (args.model)
+      return image / 255.
 
-    else:
+    root = Path (args.train)
+    training = [ [ load (str (root / cat / image)), n ] for n, cat in enumerate (CATEGORIES) for image in os.listdir (root / cat) ]
 
-      test, train = load_dataset (args.train, args.mask, args.use_svg)
+    random.shuffle (training)
 
-      test = test.batch (1)
-      train = train.shuffle (400)
-      train = train.batch (4, drop_remainder = True)
+    features, labels = zip (*training)
 
-      model.train (train, test, 3333333)
-      model.classifier.save (args.model)
+    X = np.array (features).reshape (-1, pic_height, pic_width, 3).astype (dtype = np.float32)
+
+    Y = keras.utils.to_categorical (labels, num_classes = len (CATEGORIES))
+
+    X_train, X_test, y_train, y_test = train_test_split (X, Y, test_size = 0.2, random_state = 4)
+
+    model.compile (optimizer = keras.optimizers.Adam (), loss = 'categorical_crossentropy', metrics = [ 'accuracy' ])
+    model.fit (X_train, y_train, batch_size = batch_size, epochs = epochs, verbose = 1, validation_data = (X_test, y_test))
+    model.save (args.model)
+
+    score = model.evaluate (X_test, y_test, verbose = 0)
+
+    print("Test accuracy: ", score[1])
 
 if __name__ == "__main__":
 
