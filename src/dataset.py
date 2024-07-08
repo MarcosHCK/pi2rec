@@ -141,6 +141,6 @@ def Dataset (root: str, mask_file: str = 'mask.svg', use_svg: bool = True, use_j
 
     return (before, after)
 
-  images = tf.data.Dataset.list_files (os.path.join (root, '*.JPG'))
+  images = tf.data.Dataset.list_files (os.path.join (root, '*'))
   images = images.map (targetize, num_parallel_calls = tf.data.AUTOTUNE)
   return images
